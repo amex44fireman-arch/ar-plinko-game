@@ -21,6 +21,15 @@ function configServer() {
     }
 }
 // ------------------------------------
+let logoClicks = 0;
+function handleLogoClick() {
+    logoClicks++;
+    if (logoClicks === 5) {
+        logoClicks = 0;
+        configServer();
+    }
+    setTimeout(() => { if (logoClicks > 0) logoClicks--; }, 3000);
+}
 
 const CONFIG = {
     COMPANY_ACCOUNTS: {
@@ -127,6 +136,13 @@ function init() {
 
     setupDepositListeners();
     checkAutoLogin();
+
+    // Hidden Trigger: Click logo 5 times to configure API
+    const logo = document.querySelector('.logo');
+    if (logo) {
+        logo.style.cursor = 'pointer';
+        logo.onclick = handleLogoClick;
+    }
 }
 
 // --- User Handling (Simplified) ---
