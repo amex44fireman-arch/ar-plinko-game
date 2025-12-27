@@ -7,9 +7,16 @@ const getSavedAPI = () => localStorage.getItem('ar_api_url') || 'http://localhos
 let API_URL = getSavedAPI();
 
 function configServer() {
-    const newUrl = prompt('الرجاء إدخال رابط الـ API (https://ar-plinko-game-6.onrender.com):', API_URL);
+    let newUrl = prompt('الرجاء إدخال رابط الـ API (مثال: https://ar-plinko-game-6.onrender.com):', API_URL);
     if (newUrl) {
+        // Cleanup: remove trailing slash and ensure it starts with http
+        newUrl = newUrl.trim().replace(/\/$/, "");
+        if (!newUrl.startsWith('http')) {
+            alert('❌ يجب أن يبدأ الرابط بـ http:// أو https://');
+            return;
+        }
         localStorage.setItem('ar_api_url', newUrl);
+        alert('✅ تم حفظ الإعدادات بنجاح. سيتم إعادة تحميل اللعبة.');
         location.reload();
     }
 }
