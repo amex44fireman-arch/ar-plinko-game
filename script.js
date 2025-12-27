@@ -9,14 +9,14 @@ let API_URL = getSavedAPI();
 function configServer() {
     let newUrl = prompt('الرجاء إدخال رابط الـ API (مثال: https://ar-plinko-game-6.onrender.com):', API_URL);
     if (newUrl) {
-        // Cleanup: remove trailing slash and ensure it starts with http
         newUrl = newUrl.trim().replace(/\/$/, "");
         if (!newUrl.startsWith('http')) {
             alert('❌ يجب أن يبدأ الرابط بـ http:// أو https://');
             return;
         }
+        sessionStorage.setItem('configuring', 'true');
         localStorage.setItem('ar_api_url', newUrl);
-        alert('✅ تم حفظ الإعدادات بنجاح. سيتم إعادة تحميل اللعبة.');
+        alert('✅ تم حفظ الإعدادات. سيتم إعادة تشغيل اللعبة للاتصال بالسيرفر الجديد.');
         location.reload();
     }
 }
@@ -92,9 +92,13 @@ function init() {
     // Ping Server
     axios.get(`${API_URL}/api/ping`).catch(err => {
         if (API_URL.includes('localhost')) {
-            console.warn('⚠️ Server is set to localhost. This will only work if running locally.');
+            console.warn('⚠️ Server is set to localhost.');
         } else {
-            alert(`⚠️ السيرفر غير مستجيب! \nالرابط الحالي: ${API_URL}\nتأكد أن السيرفر يعمل على Render.`);
+            // Only alert if we aren't in the middle of a config reload
+            if (!sessionStorage.getItem('configuring')) {
+                const retry = confirm(`⚠️ السيرفر لا يستجيب للرابط: \n${API_URL}\n\nهل تريد تصحيح الرابط الآن؟`);
+                if (retry) configServer();
+            }
         }
     });
 
@@ -173,7 +177,7 @@ async function doRegister(e) {
     } catch (e) {
         console.error('Registration Error:', e);
         const errorMsg = e.response?.data?.error || e.message;
-        alert(`❌ فشل تسجيل الحساب: \n${errorMsg}\n\nتأكد أنك قمت بتغيير رابط السيرفر (API_URL) في ملف script.js ليطابق رابط Render الخاص بك.`);
+        alert(`❌ فشل تسجيل الحساب: \n${errorMsg}\n\nتأكد من صحة رابط السيرفر في الإعدادات (اضغط على اللوجو 5 مرات لتغييره).`);
     } finally {
         showLoading(false);
     }
