@@ -39,24 +39,30 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // --- Database Connection ---
 // Replace with your real SQL credentials provided by your host
 // Database Connection using Environment Variables for Security
-const db = mysql.createConnection({
+// Database Connection Pool (Auto-Reconnecting)
+const db = mysql.createPool({
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'ar_game_db',
     port: process.env.DB_PORT || 3306,
-    connectTimeout: 20000, // Increase timeout for Render
+    connectTimeout: 20000,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
     ssl: {
         rejectUnauthorized: false
     }
 });
 
-db.connect(err => {
+// Test Connection
+db.getConnection((err, connection) => {
     if (err) {
         console.error('❌ Database connection failed:', err.stack);
-        return;
+    } else {
+        console.log('✅ Connected to MySQL Database (Pool).');
+        connection.release();
     }
-    console.log('✅ Connected to MySQL Database.');
 });
 
 // --- Config ---
