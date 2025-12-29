@@ -13,6 +13,10 @@ CREATE TABLE users (
     password VARCHAR(255) NOT NULL,
     balance DECIMAL(15, 2) DEFAULT 0.00,
     role ENUM('user', 'admin') DEFAULT 'user',
+    energy INT DEFAULT 15,
+    accumulated_profit DECIMAL(15, 2) DEFAULT 0.00,
+    last_energy_update DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_withdrawal DATETIME DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

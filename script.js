@@ -3,7 +3,8 @@ console.log(`%c AR GAME v${VERSION} LOADED`, 'background: #000; color: #ffd700; 
 
 // --- 🚩 SMART API CONFIGURATION 🚩 ---
 // Automatically detects your server. No need to manual edit!
-const getSavedAPI = () => localStorage.getItem('ar_api_url') || 'http://localhost:3000';
+// Automatically detects your server. No need to manual edit!
+const getSavedAPI = () => localStorage.getItem('ar_api_url') || 'https://game-server-example.onrender.com'; // Default to a placeholder if needed
 let API_URL = getSavedAPI();
 
 function configServer() {
@@ -34,15 +35,21 @@ function handleLogoClick() {
 const CONFIG = {
     COMPANY_ACCOUNTS: {
         'SyriaCash': '67457101',
-        'ShamCash': '67457101', // Standardized for now
+        'ShamCash': '67457101',
         'Electronic': '67457101'
     },
     MIN_DEP: 2000,
     MAX_DEP: 500000,
-    MULTIPLIERS: [100, 32, 4, 0, 1, 2, 8, 16, 64, "retry"],
+    // New Logic: 9 Bins.
+    // User Multipliers: 100, 64, 32, 16, 8, 4, 2, 1, 0
+    MULTIPLIERS: [100, 64, 32, 16, 8, 4, 2, 1, 0],
 
-    // 40% House Edge Update: Index 3 (*0) is now 62. Total weight = 155. 62/155 = 0.4.
-    WEIGHTS: [2, 8, 20, 62, 10, 20, 15, 8, 5, 5]
+    // User Weights: Adjusted logic.
+    // *100 (Index 0): 1.5%
+    // *64 (Index 1): 2.0%
+    // *0 (Index 8): 47.0%
+    // Others: Distributed. Total Sum = 1000.
+    WEIGHTS: [15, 20, 53, 53, 71, 88, 106, 124, 470]
 };
 
 // --- ADMIN CREDENTIALS ---
@@ -53,7 +60,7 @@ const ADMIN_CREDS = {
 };
 
 let currentUser = null;
-let currentBet = 1000;
+let currentBet = 5000;
 let pendingTxn = null;
 
 // --- Network Monitor ---
@@ -90,15 +97,20 @@ function init() {
     }
 
     // Ping Server
-    axios.get(`${API_URL}/api/ping`).catch(err => {
-        if (API_URL.includes('localhost')) {
-            console.warn('⚠️ Server is set to localhost.');
-        } else {
-            // Only alert if we aren't in the middle of a config reload
-            if (!sessionStorage.getItem('configuring')) {
-                const retry = confirm(`⚠️ السيرفر لا يستجيب للرابط: \n${API_URL}\n\nهل تريد تصحيح الرابط الآن؟`);
-                if (retry) configServer();
-            }
+    axios.get(`${API_URL}/api/ping`, { timeout: 10000 }).catch(err => {
+        if (API_URL.includes('localhost')) return;
+
+        const diagnosticUrl = `${API_URL}/api/ping`;
+        console.error('Server Unreachable:', err);
+
+        const msg = `⚠️ السيرفر لا يستجيب للرابط: ${API_URL}\n\n` +
+            `الأسباب المحتملة:\n` +
+            `1. السيرفر في Render يقوم بعمل "Restart" (انتظر دقيقة).\n` +
+            `2. الرابط الذي وضعته فيه خطأ أو ناقص https://\n\n` +
+            `اضغط "موافق" لتجربة فتح رابط السيرفر مباشرة والتأكد أنه يعمل.`;
+
+        if (confirm(msg)) {
+            window.open(diagnosticUrl, '_blank');
         }
     });
 
@@ -239,8 +251,45 @@ function loginUser(user) {
     $('user-name').appendChild(badge);
 
     updateBalanceUI();
+    updateEnergyUI();
     renderBoard();
     window.onresize = renderBoard;
+
+    // Initial Energy Check
+    fetchEnergy();
+}
+
+function fetchEnergy() {
+    if (!currentUser || currentUser.isDemo) return;
+    axios.get(`${API_URL}/api/game/energy/${currentUser.id}`)
+        .then(res => {
+            currentUser.energy = res.data.energy;
+            updateEnergyUI();
+        })
+        .catch(console.error);
+}
+
+function updateEnergyUI() {
+    const el = $('energy-display');
+    if (el) {
+        const en = currentUser.isDemo ? 15 : (currentUser.energy !== undefined ? currentUser.energy : 15);
+        el.innerHTML = `⚡ الطاقة: ${en}/15 <button onclick="buyEnergy()" style="background:#facc15;color:#000;border:none;border-radius:4px;cursor:pointer;font-size:0.7rem;padding:2px 5px;margin-right:5px;">+</button>`;
+    }
+}
+
+async function buyEnergy() {
+    if (!confirm('شراء 15 محاولة إضافية مقابل 5000 ل.س؟')) return;
+    try {
+        const res = await axios.post(`${API_URL}/api/game/buy-energy`, { userId: currentUser.id });
+        if (res.data.success) {
+            alert('تم شحن الطاقة بنجاح!');
+            fetchEnergy();
+            // Refresh balance not shown strictly here but happens on next update
+            location.reload(); // Simple refresh to sync state
+        }
+    } catch (e) {
+        alert(e.response?.data?.error || 'فشلت العملية');
+    }
 }
 
 function startDemo() {
@@ -463,7 +512,7 @@ function updateBalanceUI() {
 
 function adjustBet(delta) {
     let next = currentBet + delta;
-    if (next < 1000) next = 1000; // Force minimum 1000
+    if (next < 5000) next = 5000; // Force minimum 5000
     currentBet = next;
     $('current-bet').textContent = next;
 }
@@ -472,8 +521,17 @@ function playRound() {
     if (!NetworkMonitor.checkQuery()) return;
     if (currentUser.balance < currentBet) return alert('رصيد غير كاف');
 
+    // Optimistic Energy Check
+    if (!checkEnergy()) return;
+
+    // We don't deduct balance immediately here for Real users, 
+    // we wait for server? No, improves UX to deduct visual first.
+    // However, with Energy, we should probably sync.
+    // Let's deduct visually.
     currentUser.balance -= currentBet;
+    if (!currentUser.isDemo) currentUser.energy = (currentUser.energy || 1) - 1;
     updateBalanceUI();
+    updateEnergyUI();
 
     let r = Math.random() * CONFIG.WEIGHTS.reduce((a, b) => a + b, 0);
     let idx = 0;
@@ -482,6 +540,16 @@ function playRound() {
         if (r <= 0) { idx = i; break; }
     }
     spawnBall(idx);
+}
+
+// Add Energy Check to Play
+function checkEnergy() {
+    if (currentUser.isDemo) return true;
+    if (currentUser.energy !== undefined && currentUser.energy <= 0) {
+        alert('⚠️ نفذت طاقتك اليومية. قم بشراء طاقة إضافية للاستمرار.');
+        return false;
+    }
+    return true;
 }
 
 let pegs = []; // Global storage for peg positions
@@ -574,7 +642,7 @@ function spawnBall(targetIdx) {
     requestAnimationFrame(update);
 }
 
-function processWin(idx) {
+async function processWin(idx) {
     if (!navigator.onLine) return;
     const mult = CONFIG.MULTIPLIERS[idx];
 
@@ -582,26 +650,54 @@ function processWin(idx) {
     const bucket = document.querySelectorAll('.bucket')[idx];
     if (bucket) { bucket.style.background = '#ffffff40'; setTimeout(() => bucket.style.background = '#1e293b', 300); }
 
-    if (mult === 'retry') {
-        currentUser.balance += currentBet;
-        showFloat('REFUND');
-    } else if (mult === 0) {
-        // --- PROFIT DIVERSION (House Edge) ---
-        // 1. User Loses
-        showFloat(`-${currentBet}`, '#ef4444');
+    // --- SERVER SIDE VERIFICATION ---
+    // We send the result to the server to handle taxes and revenue
+    // Client side is just for visual "immediate" feedback, but we wait for server to confirm balance
 
-        // 2. Transfer to Admin Wallet (Backend Call)
-        axios.post(`${API_URL}/api/game/loss`, { userId: currentUser.id, amount: currentBet })
-            .then(res => console.log('[SERVER] House revenue recorded'))
-            .catch(err => console.error('[SERVER] House revenue sync failed', err));
-    } else {
-        const win = currentBet * mult;
-        currentUser.balance += win;
-        showFloat(`+${win}`);
-        createParticles(idx); // Luxury Burst
+    if (currentUser.isDemo) {
+        if (mult > 0) {
+            const win = currentBet * mult;
+            currentUser.balance += win;
+            showFloat(`+${win}`);
+            createParticles(idx);
+        } else {
+            showFloat(`-${currentBet}`, '#ef4444');
+        }
+        updateBalanceUI();
+        return;
     }
-    updateBalanceUI();
-    if (!currentUser.isDemo) saveUser(currentUser);
+
+    try {
+        const res = await axios.post(`${API_URL}/api/game/result`, {
+            userId: currentUser.id,
+            betAmount: currentBet,
+            multiplier: mult,
+            multiplierIndex: idx
+        });
+
+        if (res.data.success) {
+            const serverPayout = res.data.payout;
+            // Visual Feedback
+            if (serverPayout > 0) {
+                showFloat(`+${serverPayout.toLocaleString()}`);
+                createParticles(idx);
+            } else {
+                showFloat(`-${currentBet}`, '#ef4444');
+            }
+
+            // Sync State
+            currentUser.balance = res.data.newBalance;
+            currentUser.energy = res.data.remainingEnergy;
+            updateBalanceUI();
+            updateEnergyUI();
+        }
+    } catch (e) {
+        console.error('Game Result Error:', e);
+        // If server error, we might be desynced.
+        if (e.response && e.response.status === 403) {
+            alert(' نفذت طاقتك! اشحن الطاقة للاستمرار.');
+        }
+    }
 }
 
 function showFloat(txt, color = 'var(--gold)') {

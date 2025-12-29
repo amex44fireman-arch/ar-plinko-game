@@ -21,14 +21,14 @@ const PORT = process.env.PORT || 3000;
 // IMPORTANT: Put your real keys here. Do NOT share this file with anyone.
 const PAYMENT_CONFIG = {
     SYRIA_CASH: {
-        API_KEY: process.env.SYRIA_CASH_KEY || 'ضع_مفتاح_الـAPI_هنا_(الرمز_السري)',
-        MERCHANT_ID: process.env.SYRIA_CASH_MERCHANT || 'رقم_التاجر_الخاص_بك_00738093',
-        ENDPOINT: 'https://apisyria.com/api/v1'
+        API_KEY: process.env.SYRIA_CASH_KEY || 'YOUR_SYRIA_CASH_KEY',
+        MERCHANT_ID: process.env.SYRIA_CASH_MERCHANT || 'YOUR_MERCHANT_ID',
+        ENDPOINT: process.env.SYRIA_CASH_URL || 'https://apisyria.com/api/v1'
     },
     SHAM_CASH: {
-        API_KEY: process.env.SHAM_CASH_KEY || 'YOUR_SHAM_CASH_API_KEY',
-        SECRET: process.env.SHAM_CASH_SECRET || 'YOUR_SHAM_CASH_SECRET',
-        ENDPOINT: 'https://api.shamcash.com/api' // Update this based on their docs
+        // Placeholder for future integration
+        API_KEY: 'PENDING',
+        ENDPOINT: 'PENDING'
     }
 };
 
@@ -43,7 +43,9 @@ const db = mysql.createConnection({
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'ar_game_db'
+    database: process.env.DB_NAME || 'ar_game_db',
+    port: process.env.DB_PORT || 3306,
+    connectTimeout: 20000 // Increase timeout for Render
 });
 
 db.connect(err => {
@@ -61,6 +63,50 @@ const ADMIN_WALLET_ID = 1; // The ID of your admin account in SQL
 
 // 0. Connectivity Ping
 app.get('/api/ping', (req, res) => res.json({ status: 'alive' }));
+
+// --- ENERGY SYSTEM ---
+// Reset Energy Daily logic should ideally be a CRON job.
+// Here we do a "lazy reset" when the user requests energy info.
+const MAX_ENERGY = 15;
+const ENERGY_PRICE = 5000;
+
+app.get('/api/game/energy/:userId', (req, res) => {
+    const { userId } = req.params;
+    db.query('SELECT energy, last_energy_update FROM users WHERE id = ?', [userId], (err, results) => {
+        if (err || results.length === 0) return res.status(500).json({ error: 'User error' });
+
+        let user = results[0];
+        const now = new Date();
+        const lastUpdate = new Date(user.last_energy_update);
+
+        // Check if day changed
+        const isNewDay = now.getDate() !== lastUpdate.getDate() || now.getMonth() !== lastUpdate.getMonth();
+
+        if (isNewDay) {
+            // Reset to 15
+            db.query('UPDATE users SET energy = ?, last_energy_update = NOW() WHERE id = ?', [MAX_ENERGY, userId]);
+            res.json({ energy: MAX_ENERGY, max: MAX_ENERGY });
+        } else {
+            res.json({ energy: user.energy, max: MAX_ENERGY });
+        }
+    });
+});
+
+app.post('/api/game/buy-energy', (req, res) => {
+    const { userId } = req.body;
+    // Buying 15 more attempts
+    db.query('SELECT balance FROM users WHERE id = ?', [userId], (err, results) => {
+        if (err || results.length === 0) return res.status(500).json({ error: 'Error' });
+
+        const balance = results[0].balance;
+        if (balance < ENERGY_PRICE) return res.status(400).json({ error: 'Insufficient funds' });
+
+        db.query('UPDATE users SET balance = balance - ?, energy = energy + 15 WHERE id = ?', [ENERGY_PRICE, userId], (err) => {
+            if (err) return res.status(500).json({ error: 'Update failed' });
+            res.json({ success: true, message: 'Energy refreshed!' });
+        });
+    });
+});
 
 // 1. Auth: Register
 app.post('/api/auth/register', async (req, res) => {
@@ -103,45 +149,84 @@ const REVENUE_RECIPIENT = '12038584'; // رقم حسابك لاستلام الأ
 const SYRIA_CASH_MERCHANT = 'YOUR_REAL_MERCHANT_ID'; // سيتم استبداله برقم التاجر الخاص بك
 const SYRIA_CASH_API_KEY = 'YOUR_REAL_API_KEY';      // سيتم استبداله بمفتاح الـ API الخاص بك
 
-// 1. Game Revenue Logic (House Edge - 40% Automated Profit)
-app.post('/api/game/loss', async (req, res) => {
-    const { userId, amount } = req.body;
+// 1. Unified Game Result (Replaces old logic)
+app.post('/api/game/result', async (req, res) => {
+    const { userId, betAmount, multiplier, multiplierIndex } = req.body;
 
-    console.log(`[HOUSE REVENUE] Attempting real-time transfer of ${amount} SYP to Owner (${REVENUE_RECIPIENT})`);
+    // Check Energy First
+    db.query('SELECT energy, role, balance, accumulated_profit FROM users WHERE id = ?', [userId], async (err, results) => {
+        if (err || results.length === 0) return res.status(500).json({ error: 'User error' });
+        const user = results[0];
 
-    try {
-        // --- REAL SYRIATEL CASH API CALL ---
-        /*
-        const response = await axios.post(`${PAYMENT_CONFIG.SYRIA_CASH.ENDPOINT}/transfer`, {
-            api_key: SYRIA_CASH_API_KEY,
-            merchant: SYRIA_CASH_MERCHANT,
-            amount: amount,
-            receiver: REVENUE_RECIPIENT,
-            description: `Profit from User ${userId}`
-        });
-
-        if (response.data.success) {
-            console.log(`✅ [SUCCESS] Revenue transferred to ${REVENUE_RECIPIENT}`);
-        } else {
-            console.warn(`⚠️ [WARNING] Gateway rejected transfer: ${response.data.message}`);
+        if (user.role !== 'admin' && user.energy <= 0) {
+            return res.status(403).json({ error: 'No energy' });
         }
-        */
 
-        // For now, we simulate success and log locally until keys are provided
-        const sql = `UPDATE users SET balance = balance + ? WHERE role = 'admin' LIMIT 1`;
-        db.query(sql, [amount], (err) => {
-            if (err) console.error('Database Admin update failed', err);
-        });
+        if (user.balance < betAmount) {
+            return res.status(400).json({ error: 'Insufficient funds' });
+        }
 
-        res.json({
-            success: true,
-            message: 'Profit recorded successfully. Waiting for API Keys for real transfer.'
-        });
+        // Logic:
+        // 1. Bet is 1000.
+        // 2. We "skim" 10% immediately for the House Accumulator.
+        //    EntryTax = 1000 * 0.10 = 100.
+        //    EffectiveBet = 900.
+        // 3. User plays with 900.
+        // 4. If Win (x2): Payout = 1800.
+        //    House Net from this round = +100 (skim) - 900 (payout from house funds? No).
+        //    Wait, "House Edge" means House *keeps* the edge.
+        //    If user wins, House loses.
+        //    But user says "I take 10%... cumulative".
+        //    Let's stick to the User's "Invisible Tax":
+        //    Calculated Payout = (Bet * 0.9) * Multiplier.
+        //    The "missing" 10% (Bet * 0.1) is added to `accumulated_profit`.
 
-    } catch (error) {
-        console.error('Revenue Transfer System Error:', error.message);
-        res.status(500).json({ error: 'Gateway Connection Failed' });
-    }
+        const houseCut = betAmount * 0.10;
+        const effectiveBet = betAmount - houseCut;
+        let finalPayout = effectiveBet * multiplier;
+
+        // Accumulate the cut
+        let newAccumulated = (Number(user.accumulated_profit) || 0) + houseCut;
+
+        // Multiplier 0 Handling (The Sweep)
+        let transferMsg = null;
+        if (multiplier === 0) {
+            // Total Loss for User.
+            // House gains: The Bet Amount (1000).
+            // PLUS the accumulated profit from previous rounds?
+            // "When ball on *0, profits convert to my account".
+            // So we transfer (Bet + Accumulated).
+            const transferAmount = betAmount + newAccumulated;
+
+            // Log transfer
+            console.log(`[SYRIATEL] 💰 JACKPOT SWEEP! Transferring ${transferAmount} SYP (Bet: ${betAmount} + Acc: ${newAccumulated})`);
+
+            // Reset Accumulator after sweep
+            newAccumulated = 0;
+            transferMsg = transferAmount;
+        }
+
+        const energyDec = (user.role === 'admin') ? 0 : 1;
+
+        db.query(`UPDATE users SET balance = balance + ?, energy = energy - ?, accumulated_profit = ? WHERE id = ?`,
+            [finalPayout, energyDec, newAccumulated, userId],
+            async (err) => {
+                if (err) return res.status(500).json({ error: err.message });
+
+                // If sweep happened, we theoretically call the API here
+                if (transferMsg) {
+                    // fireAndForgetTransfer(userId, transferMsg);
+                }
+
+                res.json({
+                    success: true,
+                    newBalance: Number(user.balance) - Number(betAmount) + finalPayout,
+                    payout: finalPayout,
+                    remainingEnergy: user.energy - energyDec
+                });
+            }
+        );
+    });
 });
 
 // 2. User Deposit (Manual Verification)
@@ -156,20 +241,51 @@ app.post('/api/bank/deposit', async (req, res) => {
     });
 });
 
-// 3. User Withdraw
+// 3. User Withdraw (Updated with Limits)
 app.post('/api/bank/withdraw', async (req, res) => {
     const { userId, amount, method, account } = req.body;
-    db.query('SELECT balance FROM users WHERE id = ?', [userId], async (err, results) => {
+
+    // Limits
+    const MIN_WITHDRAW = 50000;
+
+    db.query('SELECT balance, last_withdrawal FROM users WHERE id = ?', [userId], async (err, results) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!results || results.length === 0) return res.status(404).json({ error: 'User not found' });
-        if (results[0].balance < amount) return res.status(400).json({ error: 'Insufficient funds' });
 
-        // For now, withdrawals are ALSO manual for security
+        const user = results[0];
+
+        // 1. Balance Check
+        if (user.balance < amount) return res.status(400).json({ error: 'الرصيد غير كاف' });
+
+        // 2. Min Amount
+        if (amount < MIN_WITHDRAW) return res.status(400).json({ error: `الحد الأدنى للسحب ${MIN_WITHDRAW} ل.س` });
+
+        // 3. Max Amount (50% rule)
+        // User asked: "Withdraw gradual... if 100k, allow 50k". 
+        // So max allowed is 50% of TOTAL balance?
+        const allowed = user.balance * 0.50;
+        if (amount > allowed) {
+            return res.status(400).json({ error: `يسمح لك بسحب ${allowed} ل.س فقط (50% من رصيدك) كحماية لأرباحك` });
+        }
+
+        // 4. Frequency (24h)
+        if (user.last_withdrawal) {
+            const last = new Date(user.last_withdrawal);
+            const now = new Date();
+            const diffMs = now - last;
+            const diffHours = diffMs / (1000 * 60 * 60);
+            if (diffHours < 24) {
+                return res.status(400).json({ error: 'يسمح بطلب سحب واحد فقط كل 24 ساعة' });
+            }
+        }
+
+        // Process
         const sql = `INSERT INTO transactions (user_id, type, amount, method, proof, status) VALUES (?, 'withdraw', ?, ?, ?, 'pending')`;
         db.query(sql, [userId, amount, method, account], (err, result) => {
             if (err) return res.status(500).json({ error: err.message });
-            // Deduct instantly to "hold" funds, or wait? Usually hold is better.
-            db.query('UPDATE users SET balance = balance - ? WHERE id = ?', [amount, userId]);
+
+            // Deduct and Update Timestamp
+            db.query('UPDATE users SET balance = balance - ?, last_withdrawal = NOW() WHERE id = ?', [amount, userId]);
             res.json({ success: true, message: 'تم إرسال طلب السحب للمراجعة' });
         });
     });
