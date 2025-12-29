@@ -488,6 +488,32 @@ body {
 .admin-table-container {
     width: 100%;
     overflow-x: auto;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.admin-sub-panel {
+    max-height: 600px;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+.admin-sub-panel::-webkit-scrollbar {
+    width: 8px;
+}
+
+.admin-sub-panel::-webkit-scrollbar-track {
+    background: #111;
+    border-radius: 10px;
+}
+
+.admin-sub-panel::-webkit-scrollbar-thumb {
+    background: var(--gold);
+    border-radius: 10px;
+}
+
+.admin-sub-panel::-webkit-scrollbar-thumb:hover {
+    background: #e5b800;
 }
 
 .admin-table {
