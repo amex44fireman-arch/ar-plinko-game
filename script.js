@@ -1,3 +1,9 @@
+window.onerror = function (msg, url, line, col, error) {
+    if (msg.includes('ResizeObserver')) return; // Ignore harmless resize errors
+    alert('⚠️ حدث خطأ في النظام:\n\n' + msg + '\n\n' + 'السطر: ' + line);
+    console.error('Global Error:', error);
+};
+
 const VERSION = '4.0.0 - SECURE EDITION';
 console.log(`%c AR GAME v${VERSION} LOADED`, 'background: #000; color: #ffd700; font-size: 20px; font-weight: bold;');
 
@@ -31,6 +37,15 @@ function handleLogoClick() {
     }
     setTimeout(() => { if (logoClicks > 0) logoClicks--; }, 3000);
 }
+
+// Utils moved to top to prevent hoisting errors
+const $ = (id) => document.getElementById(id);
+const showAuth = (mode) => {
+    const l = $('login-form-container');
+    const r = $('register-form-container');
+    if (l) l.style.display = mode === 'login' ? 'block' : 'none';
+    if (r) r.style.display = mode === 'register' ? 'block' : 'none';
+};
 
 const CONFIG = {
     COMPANY_ACCOUNTS: {
@@ -151,6 +166,7 @@ function init() {
 
     setupDepositListeners();
     checkAutoLogin();
+    initMultipliers(); // Call the new function
 
     // Hidden Trigger: Click logo 5 times to configure API
     const logo = document.querySelector('.logo');
@@ -298,7 +314,7 @@ function startDemo() {
 }
 
 async function checkAutoLogin() {
-    if (!navigator.onLine) return;
+    // Removed offline check to ensure UI always loads
     const savedEmail = localStorage.getItem('ar_last_user');
     if (savedEmail) {
         try {
@@ -415,15 +431,18 @@ function updateBalanceUI() {
 }
 
 async function handleLoan() {
-    if (!confirm('هل تريد استلاف 10,000 ل.س؟\n\nسيتم خصم هذا المبلغ تلقائياً من أرباحك القادمة.')) return;
+    if (!confirm('هل تريد طلب سلفة 10,000 ل.س؟\n\nسيتم إرسال الطلب للمدير للموافقة عليه.')) return;
 
     try {
         const res = await axios.post(`${API_URL}/api/bank/loan`, { userId: currentUser.id });
         if (res.data.success) {
-            alert(res.data.message);
-            currentUser.balance = res.data.newBalance;
-            currentUser.debt = 10000; // Client-side optimistic update
-            updateBalanceUI();
+            alert('✅ ' + res.data.message);
+            // Dont update balance instantly. Just hide button.
+            const btn = $('btn-loan');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = '⏳ قيد المراجعة...';
+            }
         }
     } catch (e) {
         alert(e.response?.data?.error || 'فشل طلب السلفة');
@@ -1073,24 +1092,23 @@ window.handleWithdraw = async () => {
     }
 };
 
-const buckets = $('betting-sections');
-buckets.innerHTML = '';
-CONFIG.MULTIPLIERS.forEach((m, i) => {
-    const d = document.createElement('div');
-    d.className = 'bucket';
-    d.innerHTML = `<span>x${m}</span>`;
-    if (m === 'retry') d.innerHTML = '<span>↺</span>';
-    const clrs = ['#f87171', '#fb923c', '#facc15', '#a3e635', '#10b981', '#22d3ee', '#60a5fa', '#818cf8', '#a78bfa', '#f472b6'];
-    d.style.borderBottom = `3px solid ${clrs[i]}`;
-    buckets.appendChild(d);
-});
+function initMultipliers() {
+    const buckets = $('betting-sections');
+    if (!buckets) return;
+    buckets.innerHTML = '';
+    CONFIG.MULTIPLIERS.forEach((m, i) => {
+        const d = document.createElement('div');
+        d.className = 'bucket';
+        d.innerHTML = `<span>x${m}</span>`;
+        if (m === 'retry') d.innerHTML = '<span>↺</span>';
+        const clrs = ['#f87171', '#fb923c', '#facc15', '#a3e635', '#10b981', '#22d3ee', '#60a5fa', '#818cf8', '#a78bfa', '#f472b6'];
+        d.style.borderBottom = `3px solid ${clrs[i]}`;
+        buckets.appendChild(d);
+    });
+}
 
 
 // Utils
-const $ = (id) => document.getElementById(id);
-const showAuth = (mode) => {
-    $('login-form-container').style.display = mode === 'login' ? 'block' : 'none';
-    $('register-form-container').style.display = mode === 'register' ? 'block' : 'none';
-};
+
 
 window.onload = init;

@@ -313,7 +313,7 @@ app.post('/api/bank/withdraw', async (req, res) => {
     });
 });
 
-// 4. LOAN SYSTEM (New)
+// 4. LOAN SYSTEM (Request Based)
 app.post('/api/bank/loan', (req, res) => {
     const { userId } = req.body;
     const LOAN_AMOUNT = 10000;
@@ -325,9 +325,16 @@ app.post('/api/bank/loan', (req, res) => {
         if (user.debt > 0) return res.status(400).json({ error: 'عذراً، لديك دين سابق يجب سداده أولاً.' });
         if (user.balance > 1000) return res.status(400).json({ error: 'رصيدك كافٍ ولا تحتاج لدين حالياً.' });
 
-        db.query('UPDATE users SET balance = balance + ?, debt = ? WHERE id = ?', [LOAN_AMOUNT, LOAN_AMOUNT, userId], (err) => {
-            if (err) return res.status(500).json({ error: 'Failed to process loan' });
-            res.json({ success: true, message: 'تم إضافة 10,000 ل.س رصيد دين بنجاح! سيتم خصمها عند الفوز.', newBalance: user.balance + LOAN_AMOUNT });
+        // Check for existing pending loan
+        db.query('SELECT id FROM transactions WHERE user_id = ? AND type = "loan" AND status = "pending"', [userId], (err, pending) => {
+            if (pending && pending.length > 0) return res.status(400).json({ error: 'لديك طلب سلفة قيد المراجعة بالفعل.' });
+
+            // Create Pending Request
+            const sql = `INSERT INTO transactions (user_id, type, amount, status, created_at) VALUES (?, 'loan', ?, 'pending', NOW())`;
+            db.query(sql, [userId, LOAN_AMOUNT], (err, result) => {
+                if (err) return res.status(500).json({ error: 'Failed to request loan' });
+                res.json({ success: true, message: 'تم إرسال طلب السلفة (10,000) إلى الإدارة للمراجعة.', pending: true });
+            });
         });
     });
 });
@@ -351,34 +358,51 @@ app.get('/api/admin/transactions', (req, res) => {
 });
 
 // Process transaction (Approve/Reject)
+// Process transaction (Approve/Reject)
 app.post('/api/admin/process', (req, res) => {
     const { txnId, action, adminId } = req.body;
 
-    // 1. Get Transaction details
     db.query('SELECT * FROM transactions WHERE id = ?', [txnId], (err, txns) => {
         if (err || txns.length === 0) return res.status(404).json({ error: 'Transaction not found' });
         const txn = txns[0];
 
         if (action === 'approve') {
             const newStatus = 'success';
-            // If it's a deposit, we ADD balance to the user
+
             if (txn.type === 'deposit') {
                 db.query('UPDATE users SET balance = balance + ? WHERE id = ?', [txn.amount, txn.user_id], (err) => {
                     db.query('UPDATE transactions SET status = ? WHERE id = ?', [newStatus, txnId]);
                     res.json({ success: true, userId: txn.user_id });
                 });
+            } else if (txn.type === 'withdraw') {
+                db.query('UPDATE transactions SET status = ? WHERE id = ?', [newStatus, txnId]);
+                res.json({ success: true });
+            } else if (txn.type === 'loan') {
+                // Approve Loan: Add Balance AND Add Debt
+                db.query('UPDATE users SET balance = balance + ?, debt = debt + ? WHERE id = ?', [txn.amount, txn.amount, txn.user_id], (err) => {
+                    db.query('UPDATE transactions SET status = ? WHERE id = ?', [newStatus, txnId]);
+                    res.json({ success: true });
+                });
             } else {
-                // Withdrawal was already deducted from balance as "hold"
+                // Fallback
                 db.query('UPDATE transactions SET status = ? WHERE id = ?', [newStatus, txnId]);
                 res.json({ success: true });
             }
+
         } else {
-            // Reject: If withdrawal, refund the held amount
+            // REJECT
+            const newStatus = 'failed';
             if (txn.type === 'withdraw') {
-                db.query('UPDATE users SET balance = balance + ? WHERE id = ?', [txn.amount, txn.user_id]);
+                // Refund if withdraw rejected
+                db.query('UPDATE users SET balance = balance + ? WHERE id = ?', [txn.amount, txn.user_id], () => {
+                    db.query('UPDATE transactions SET status = ? WHERE id = ?', [newStatus, txnId]);
+                    res.json({ success: true, message: 'Transaction rejected and refunded' });
+                });
+            } else {
+                // Deposit or Loan rejected = No user change
+                db.query('UPDATE transactions SET status = ? WHERE id = ?', [newStatus, txnId]);
+                res.json({ success: true });
             }
-            db.query('UPDATE transactions SET status = ? WHERE id = ?', ['rejected', txnId]);
-            res.json({ success: true });
         }
     });
 });
