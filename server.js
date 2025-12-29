@@ -342,6 +342,30 @@ app.post('/api/bank/loan', (req, res) => {
 // --- ADMIN ROUTES ---
 
 // Get all pending transactions
+// Get all users for Admin
+app.get('/api/admin/users', (req, res) => {
+    const sql = `SELECT id, first_name, last_name, email, balance, debt, created_at FROM users ORDER BY created_at DESC`;
+    db.query(sql, (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
+
+// Get all transactions (Pending + Past) for Admin
+app.get('/api/admin/all-transactions', (req, res) => {
+    const sql = `
+        SELECT t.*, u.email as user_email 
+        FROM transactions t 
+        JOIN users u ON t.user_id = u.id 
+        ORDER BY t.created_at DESC
+        LIMIT 200
+    `;
+    db.query(sql, (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
+
 // Get all pending transactions for Admin
 app.get('/api/admin/transactions', (req, res) => {
     const sql = `

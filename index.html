@@ -289,31 +289,69 @@
                             والعودة للعبة</button>
                     </div>
 
-                    <div class="admin-stats-bar" style="display:flex; gap:20px; margin-bottom:30px;">
-                        <div style="flex:1; background:#111; padding:20px; border-left:4px solid var(--gold);">
-                            <small style="opacity:0.6">إجمالي الإيداعات المعلقة</small>
-                            <div id="admin-pending-count" style="font-size:1.5rem; font-weight:900;">0</div>
-                        </div>
-                        <button onclick="renderAdminPanel()"
-                            style="background:var(--gold); border:none; padding:10px 20px; font-weight:900; cursor:pointer; height:fit-content; align-self:center;">🔄
-                            تحديث البيانات</button>
+                    <div class="admin-sub-nav"
+                        style="display:flex; gap:10px; margin-bottom:20px; border-bottom:1px solid #222; padding-bottom:10px;">
+                        <button onclick="switchAdminSubView('pending')" class="sub-nav-btn active">طلبات معلقة</button>
+                        <button onclick="switchAdminSubView('users')" class="sub-nav-btn">جميع اللاعبين</button>
+                        <button onclick="switchAdminSubView('history')" class="sub-nav-btn">سجل العمليات</button>
                     </div>
 
-                    <div class="admin-table-container">
-                        <table class="admin-table">
-                            <thead>
-                                <tr>
-                                    <th>المستخدم</th>
-                                    <th>المبلغ</th>
-                                    <th>الوسيلة</th>
-                                    <th>الحالة</th>
-                                    <th>الإجراء</th>
-                                </tr>
-                            </thead>
-                            <tbody id="admin-txn-body">
-                                <!-- Transactions will be injected here -->
-                            </tbody>
-                        </table>
+                    <div id="admin-pending-view" class="admin-sub-panel">
+                        <div class="admin-stats-bar" style="display:flex; gap:20px; margin-bottom:20px;">
+                            <div style="flex:1; background:#111; padding:15px; border-left:4px solid var(--gold);">
+                                <small style="opacity:0.6">إجمالي الإيداعات المعلقة</small>
+                                <div id="admin-pending-count" style="font-size:1.5rem; font-weight:900;">0</div>
+                            </div>
+                        </div>
+                        <div class="admin-table-container">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>المستخدم</th>
+                                        <th>المبلغ</th>
+                                        <th>الوسيلة</th>
+                                        <th>الحالة</th>
+                                        <th>الإجراء</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-txn-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div id="admin-users-view" class="admin-sub-panel" style="display:none;">
+                        <div class="admin-table-container">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>المعرف</th>
+                                        <th>الاسم</th>
+                                        <th>الإيميل</th>
+                                        <th>الرصيد</th>
+                                        <th>الدين</th>
+                                        <th>التاريخ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-users-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div id="admin-history-view" class="admin-sub-panel" style="display:none;">
+                        <div class="admin-table-container">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>المستخدم</th>
+                                        <th>النوع</th>
+                                        <th>المبلغ</th>
+                                        <th>الحالة</th>
+                                        <th>التاريخ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-history-body"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </section>
             </div>

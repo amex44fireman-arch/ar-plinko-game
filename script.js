@@ -847,48 +847,118 @@ function createParticles(idx) {
 }
 
 // --- Admin Functions ---
+let currentAdminSubView = 'pending';
+
+function switchAdminSubView(view) {
+    currentAdminSubView = view;
+    // Update UI
+    document.querySelectorAll('.admin-sub-panel').forEach(p => p.style.display = 'none');
+    $(`admin-${view}-view`).style.display = 'block';
+
+    document.querySelectorAll('.sub-nav-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent.includes(view === 'pending' ? 'معقلة' : (view === 'users' ? 'اللاعبين' : 'العمليات')));
+    });
+
+    renderAdminPanel();
+}
+
 async function renderAdminPanel() {
     if (currentUser.role !== 'admin') return;
-    const list = $('admin-txn-body');
+
+    // Auto-route based on current active sub-view
+    if (currentAdminSubView === 'pending') {
+        const list = $('admin-txn-body');
+        if (!list) return;
+        list.innerHTML = '<tr><td colspan="5" style="text-align:center">جاري التحميل...</td></tr>';
+
+        try {
+            const res = await axios.get(`${API_URL}/api/admin/transactions`);
+            const txns = res.data; // Server already filters for pending
+
+            const countEl = $('admin-pending-count');
+            if (countEl) countEl.textContent = txns.length;
+
+            if (txns.length === 0) {
+                list.innerHTML = '<tr><td colspan="5" style="text-align:center; opacity:0.5;">لا يوجد عمليات معلقة حالياً</td></tr>';
+                return;
+            }
+
+            list.innerHTML = txns.map(t => `
+                <tr>
+                    <td>
+                        <div style="font-weight:700">${t.user_email}</div>
+                        <div style="font-size:0.7rem; opacity:0.5">${new Date(t.created_at).toLocaleString('ar-EG')}</div>
+                    </td>
+                    <td style="color:var(--gold); font-weight:900">${t.amount.toLocaleString()} SYP</td>
+                    <td>
+                        <div class="badge" style="background:#222">${t.method || 'loan'}</div>
+                        <div style="font-size:0.7rem; color:var(--gold); margin-top:3px;">ID: ${t.transaction_id || t.type}</div>
+                    </td>
+                    <td>
+                        ${t.proof ? `<button onclick="viewProof('${t.proof}')" style="background:#444; border:none; color:white; padding:3px 8px; font-size:0.6rem; cursor:pointer;">عرض الإيصال 📑</button>` : '<span style="opacity:0.3">لا يوجد (طلب دين)</span>'}
+                    </td>
+                    <td>
+                        <div style="display:flex; gap:5px;">
+                            <button onclick="processAdminAction('${t.id}', 'approve')" class="approve-btn" style="padding:5px 10px; font-size:0.7rem;">قبول ✅</button>
+                            <button onclick="processAdminAction('${t.id}', 'reject')" class="reject-btn" style="padding:5px 10px; font-size:0.7rem;">رفض ❌</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (e) {
+            list.innerHTML = '<tr><td colspan="5" style="color:red; text-align:center">خطأ في الاتصال</td></tr>';
+        }
+    } else if (currentAdminSubView === 'users') {
+        renderAdminUsers();
+    } else if (currentAdminSubView === 'history') {
+        renderAdminHistory();
+    }
+}
+
+async function renderAdminUsers() {
+    const list = $('admin-users-body');
     if (!list) return;
-    list.innerHTML = '<tr><td colspan="5" style="text-align:center">جاري التحميل...</td></tr>';
+    list.innerHTML = '<tr><td colspan="6" style="text-align:center">جاري جلب قائمة اللاعبين...</td></tr>';
 
     try {
-        const res = await axios.get(`${API_URL}/api/admin/transactions`);
-        const txns = res.data.filter(t => t.status === 'pending');
-
-        const countEl = $('admin-pending-count');
-        if (countEl) countEl.textContent = txns.length;
-
-        if (txns.length === 0) {
-            list.innerHTML = '<tr><td colspan="5" style="text-align:center; opacity:0.5;">لا يوجد عمليات معلقة حالياً</td></tr>';
-            return;
-        }
-
-        list.innerHTML = txns.map(t => `
+        const res = await axios.get(`${API_URL}/api/admin/users`);
+        list.innerHTML = res.data.map(u => `
             <tr>
-                <td>
-                    <div style="font-weight:700">${t.user_email}</div>
-                    <div style="font-size:0.7rem; opacity:0.5">${new Date(t.created_at).toLocaleString('ar-EG')}</div>
-                </td>
-                <td style="color:var(--gold); font-weight:900">${t.amount.toLocaleString()} SYP</td>
-                <td>
-                    <div class="badge" style="background:#222">${t.method}</div>
-                    <div style="font-size:0.7rem; color:var(--gold); margin-top:3px;">ID: ${t.transaction_id || 'N/A'}</div>
-                </td>
-                <td>
-                    ${t.proof ? `<button onclick="viewProof('${t.proof}')" style="background:#444; border:none; color:white; padding:3px 8px; font-size:0.6rem; cursor:pointer;">عرض الإيصال 📑</button>` : '<span style="opacity:0.3">لا يوجد</span>'}
-                </td>
-                <td>
-                    <div style="display:flex; gap:5px;">
-                        <button onclick="processAdminAction('${t.id}', 'approve')" class="approve-btn" style="padding:5px 10px; font-size:0.7rem;">قبول ✅</button>
-                        <button onclick="processAdminAction('${t.id}', 'reject')" class="reject-btn" style="padding:5px 10px; font-size:0.7rem;">رفض ❌</button>
-                    </div>
-                </td>
+                <td>${u.id}</td>
+                <td style="font-weight:700">${u.first_name} ${u.last_name}</td>
+                <td style="font-size:0.8rem">${u.email}</td>
+                <td style="color:var(--gold)">${u.balance.toLocaleString()} SYP</td>
+                <td style="color:red">${(u.debt || 0).toLocaleString()} SYP</td>
+                <td style="font-size:0.7rem; opacity:0.5">${new Date(u.created_at).toLocaleDateString('ar-EG')}</td>
             </tr>
         `).join('');
     } catch (e) {
-        list.innerHTML = '<tr><td colspan="5" style="color:red; text-align:center">خطأ في الاتصال بالسيرفر</td></tr>';
+        list.innerHTML = '<tr><td colspan="6" style="color:red">فشل جلب اللاعبين</td></tr>';
+    }
+}
+
+async function renderAdminHistory() {
+    const list = $('admin-history-body');
+    if (!list) return;
+    list.innerHTML = '<tr><td colspan="5" style="text-align:center">جاري جلب السجل الكامل...</td></tr>';
+
+    try {
+        const res = await axios.get(`${API_URL}/api/admin/all-transactions`);
+        list.innerHTML = res.data.map(t => {
+            const statusColor = t.status === 'success' ? '#10b981' : (t.status === 'failed' ? '#ef4444' : '#facc15');
+            const typeLabels = { deposit: 'إيداع', withdraw: 'سحب', loan: 'دين 💸', game_win: 'فوز', game_loss: 'خسارة' };
+            return `
+                <tr>
+                    <td><div style="font-weight:bold">${t.user_email}</div></td>
+                    <td>${typeLabels[t.type] || t.type}</td>
+                    <td style="font-weight:900">${t.amount.toLocaleString()} SYP</td>
+                    <td style="color:${statusColor}">${t.status.toUpperCase()}</td>
+                    <td style="font-size:0.7rem; opacity:0.5">${new Date(t.created_at).toLocaleString('ar-EG')}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        list.innerHTML = '<tr><td colspan="5" style="color:red">فشل جلب السجل</td></tr>';
     }
 }
 
