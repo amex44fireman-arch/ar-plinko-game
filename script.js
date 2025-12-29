@@ -8,6 +8,7 @@ const VERSION = '4.0.0 - SECURE EDITION';
 console.log(`%c AR GAME v${VERSION} LOADED`, 'background: #000; color: #ffd700; font-size: 20px; font-weight: bold;');
 
 // --- 🚩 SMART API CONFIGURATION 🚩 ---
+if (typeof axios !== 'undefined') axios.defaults.timeout = 60000;
 // Automatically detects your server. No need to manual edit!
 // Automatically detects your server. No need to manual edit!
 const getSavedAPI = () => localStorage.getItem('ar_api_url') || 'https://game-server-example.onrender.com'; // Default to a placeholder if needed
@@ -112,7 +113,7 @@ function init() {
     }
 
     // Ping Server
-    axios.get(`${API_URL}/api/ping`, { timeout: 10000 })
+    axios.get(`${API_URL}/api/ping`, { timeout: 60000 })
         .then(() => {
             console.log('✅ Server Online');
             // Server is ready
