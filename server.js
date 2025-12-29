@@ -45,7 +45,10 @@ const db = mysql.createConnection({
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'ar_game_db',
     port: process.env.DB_PORT || 3306,
-    connectTimeout: 20000 // Increase timeout for Render
+    connectTimeout: 20000, // Increase timeout for Render
+    ssl: {
+        rejectUnauthorized: false
+    }
 });
 
 db.connect(err => {
