@@ -97,22 +97,21 @@ function init() {
     }
 
     // Ping Server
-    axios.get(`${API_URL}/api/ping`, { timeout: 10000 }).catch(err => {
-        if (API_URL.includes('localhost')) return;
+    axios.get(`${API_URL}/api/ping`, { timeout: 10000 })
+        .then(() => {
+            console.log('✅ Server Online');
+            // Server is ready
+        })
+        .catch(err => {
+            console.error('❌ Server Offline:', err);
+            let msg = 'فشل الاتصال بالسيرفر.\n';
+            if (err.code === 'ERR_NETWORK') msg += 'تأكد من الرابط (هل هو HTTPS؟) ومن تشغيل السيرفر.';
+            else msg += `رمز الخطأ: ${err.message}`;
 
-        const diagnosticUrl = `${API_URL}/api/ping`;
-        console.error('Server Unreachable:', err);
-
-        const msg = `⚠️ السيرفر لا يستجيب للرابط: ${API_URL}\n\n` +
-            `الأسباب المحتملة:\n` +
-            `1. السيرفر في Render يقوم بعمل "Restart" (انتظر دقيقة).\n` +
-            `2. الرابط الذي وضعته فيه خطأ أو ناقص https://\n\n` +
-            `اضغط "موافق" لتجربة فتح رابط السيرفر مباشرة والتأكد أنه يعمل.`;
-
-        if (confirm(msg)) {
-            window.open(diagnosticUrl, '_blank');
-        }
-    });
+            if (confirm(`${msg}\n\nهل تريد محاولة ضبط الرابط مرة أخرى؟`)) {
+                configServer();
+            }
+        });
 
     const safeClick = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
 
@@ -826,6 +825,11 @@ function renderBoard() {
             b.appendChild(p);
 
             // Store pixel coordinates for physics
+            // We need relative coordinates to container
+            // width of container is rect.width
+            // topPct is relative to height (but user square aspect ratio?)
+            // Let's use % logic in physics if possible or recalculate on resize.
+            // For simplicity, we re-query in physics loop or assume static for now.
             pegs.push({
                 el: p,
                 px: (leftPct / 100) * rect.width,
@@ -833,17 +837,166 @@ function renderBoard() {
             });
         }
     }
-    const buckets = $('betting-sections');
-    buckets.innerHTML = '';
-    CONFIG.MULTIPLIERS.forEach((m, i) => {
-        const d = document.createElement('div');
-        d.className = 'bucket';
-        d.innerHTML = `<span>x${m}</span>`;
-        if (m === 'retry') d.innerHTML = '<span>↺</span>';
-        const clrs = ['#f87171', '#fb923c', '#facc15', '#a3e635', '#10b981', '#22d3ee', '#60a5fa', '#818cf8', '#a78bfa', '#f472b6'];
-        d.style.borderBottom = `3px solid ${clrs[i]}`;
-        buckets.appendChild(d);
-    });
+}
+
+// --- Banking UI ---
+function renderBanking() {
+    const container = $('banking-container');
+    container.innerHTML = `
+    <div class="glass-panel" style="max-width:600px; margin:2rem auto; padding:2rem;">
+        <h2 style="color:var(--gold); text-align:center; margin-bottom:1.5rem">البنك</h2>
+        
+        <div style="display:flex; justify-content:center; gap:1rem; margin-bottom:2rem;">
+            <button onclick="showSection('deposit')" class="action-btn" id="btn-deposit">إيداع</button>
+            <button onclick="showSection('withdraw')" class="action-btn" id="btn-withdraw">سحب</button>
+        </div>
+
+        <!-- Deposit Section -->
+        <div id="section-deposit">
+            <h3 style="color:var(--neon-blue); margin-bottom:1rem;">شحن الرصيد</h3>
+            
+            <div style="background:rgba(255,255,255,0.05); padding:1rem; border-radius:10px; margin-bottom:1.5rem; text-align:center; border:1px dashed var(--gold);">
+                <small style="color:#aaa">رقم المعرف الخاص بك (ID) للإيداع:</small>
+                <h2 style="font-family:monospace; color:white; margin:0.5rem 0; cursor:pointer;" onclick="navigator.clipboard.writeText('${currentUser.id}'); alert('تم نسخ المعرف')">
+                    ${currentUser.id} <span style="font-size:0.8rem; color:var(--gold)">📋</span>
+                </h2>
+                <small style="color:var(--neon-blue)">يرجى وضع هذا الرقم في وصف عملية التحويل المالي</small>
+            </div>
+
+            <div class="form-group">
+                <label>طريقة الدفع</label>
+                <select id="dep-method" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid #334155; border-radius:8px;">
+                    <option value="SyriaCash">SyriaCash (SyriaTel)</option>
+                    <option value="ShamCash">ShamCash (MTN)</option>
+                    <option value="Electronic">شحن إلكتروني</option>
+                </select>
+            </div>
+            
+            <div id="dep-info" style="margin-bottom:1rem; padding:1rem; background:rgba(0,0,0,0.3); border-radius:8px;">
+                <!-- Filled dynamically -->
+            </div>
+
+            <div class="form-group">
+                <label>المبلغ المرسل</label>
+                <input type="number" id="dep-amount" placeholder="أقل مبلغ ${CONFIG.MIN_DEP}" style="width:100%">
+            </div>
+
+            <div class="form-group">
+                <label>رقم العملية (Transaction ID)</label>
+                <input type="text" id="dep-txid" placeholder="أدخل رقم عملية التحويل هنا" style="width:100%">
+            </div>
+
+            <button onclick="handleDeposit()" class="action-btn" style="width:100%">تأكيد الإيداع</button>
+        </div>
+
+        <!-- Withdraw Section -->
+        <div id="section-withdraw" style="display:none;">
+            <h3 style="color:var(--neon-purple); margin-bottom:1rem;">سحب الأرباح</h3>
+            <div class="form-group">
+                <label>طريقة السحب</label>
+                <select id="wd-method" style="width:100%; padding:10px; background:#0f172a; color:white; border:1px solid #334155; border-radius:8px;">
+                    <option value="SyriaCash">SyriaCash (SyriaTel)</option>
+                    <option value="ShamCash">ShamCash (MTN)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>المبلغ المراد سحبه</label>
+                <input type="number" id="wd-amount" placeholder="الحد الأدنى 50,000" style="width:100%">
+            </div>
+
+            <div class="form-group">
+                <label>رقم الهاتف (للاستلام)</label>
+                <input type="tel" id="wd-phone" placeholder="09xxxxxxxx" style="width:100%">
+                <small style="color:#aaa; display:block; margin-top:5px;">سيتم ربط هذا الرقم بحسابك للأبد.</small>
+            </div>
+
+            <button onclick="handleWithdraw()" class="action-btn" style="width:100%">طلب سحب</button>
+        </div>
+    </div>
+    `;
+
+    // Dynamic Info Update
+    const methodSel = $('dep-method');
+    const infoDiv = $('dep-info');
+    const updateInfo = () => {
+        const m = methodSel.value;
+        infoDiv.innerHTML = `
+            <p>يرجى تحويل المبلغ إلى حساب التاجر:</p>
+            <h3 style="color:var(--gold)">${CONFIG.COMPANY_ACCOUNTS[m]}</h3>
+            <p style="font-size:0.9rem; color:#aaa">تأكد من إدخال المعرف <b>${currentUser.id}</b> في الملاحظات.</p>
+        `;
+    };
+    methodSel.onchange = updateInfo;
+    updateInfo();
+}
+
+window.showSection = (sec) => {
+    $('section-deposit').style.display = sec === 'deposit' ? 'block' : 'none';
+    $('section-withdraw').style.display = sec === 'withdraw' ? 'block' : 'none';
+    $('btn-deposit').style.background = sec === 'deposit' ? 'var(--gold)' : 'rgba(255,255,255,0.1)';
+    $('btn-withdraw').style.background = sec === 'withdraw' ? 'var(--gold)' : 'rgba(255,255,255,0.1)';
+};
+
+window.handleDeposit = async () => {
+    const amount = Number($('dep-amount').value);
+    const method = $('dep-method').value;
+    const txid = $('dep-txid').value;
+
+    if (amount < CONFIG.MIN_DEP) return alert(`أقل مبلغ للإيداع ${CONFIG.MIN_DEP}`);
+    if (!txid) return alert('يرجى إدخال رقم العملية');
+
+    try {
+        const res = await axios.post(`${API_URL}/api/bank/deposit`, {
+            userId: currentUser.id,
+            amount,
+            method,
+            transactionId: txid,
+            proof: 'Manual'
+        });
+        alert(res.data.message);
+        renderBanking(); // Reset form
+    } catch (e) {
+        alert(e.response?.data?.error || 'فشل الطلب');
+    }
+};
+
+window.handleWithdraw = async () => {
+    const amount = Number($('wd-amount').value);
+    const method = $('wd-method').value;
+    const phone = $('wd-phone').value;
+
+    if (!phone || phone.length < 9) return alert('يرجى إدخال رقم هاتف صحيح');
+    if (amount < 50000) return alert('الحد الأدنى للسحب 50,000');
+
+    try {
+        const res = await axios.post(`${API_URL}/api/bank/withdraw`, {
+            userId: currentUser.id,
+            amount,
+            method,
+            phone // Send phone instead of account
+        });
+        alert(res.data.message);
+        // Optimistic update
+        currentUser.balance -= amount;
+        updateBalanceUI();
+        renderBanking();
+    } catch (e) {
+        alert(e.response?.data?.error || 'فشل الطلب');
+    }
+};
+
+const buckets = $('betting-sections');
+buckets.innerHTML = '';
+CONFIG.MULTIPLIERS.forEach((m, i) => {
+    const d = document.createElement('div');
+    d.className = 'bucket';
+    d.innerHTML = `<span>x${m}</span>`;
+    if (m === 'retry') d.innerHTML = '<span>↺</span>';
+    const clrs = ['#f87171', '#fb923c', '#facc15', '#a3e635', '#10b981', '#22d3ee', '#60a5fa', '#818cf8', '#a78bfa', '#f472b6'];
+    d.style.borderBottom = `3px solid ${clrs[i]}`;
+    buckets.appendChild(d);
+});
 }
 
 // Utils

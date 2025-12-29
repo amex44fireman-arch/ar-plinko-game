@@ -259,93 +259,113 @@ app.post('/api/bank/withdraw', async (req, res) => {
 
         // 1. Balance Check
         if (user.balance < amount) return res.status(400).json({ error: 'الرصيد غير كاف' });
+        const { userId, amount, method, phone } = req.body; // Changed 'account' to 'phone' contextually
 
-        // 2. Min Amount
-        if (amount < MIN_WITHDRAW) return res.status(400).json({ error: `الحد الأدنى للسحب ${MIN_WITHDRAW} ل.س` });
-
-        // 3. Max Amount (50% rule)
-        // User asked: "Withdraw gradual... if 100k, allow 50k". 
-        // So max allowed is 50% of TOTAL balance?
-        const allowed = user.balance * 0.50;
-        if (amount > allowed) {
-            return res.status(400).json({ error: `يسمح لك بسحب ${allowed} ل.س فقط (50% من رصيدك) كحماية لأرباحك` });
+        if (!phone || phone.length < 9) {
+            return res.status(400).json({ error: 'عذراً، يجب إدخال رقم الهاتف بشكل صحيح لربطه بالحساب.' });
         }
 
-        // 4. Frequency (24h)
-        if (user.last_withdrawal) {
-            const last = new Date(user.last_withdrawal);
-            const now = new Date();
-            const diffMs = now - last;
-            const diffHours = diffMs / (1000 * 60 * 60);
-            if (diffHours < 24) {
-                return res.status(400).json({ error: 'يسمح بطلب سحب واحد فقط كل 24 ساعة' });
+        db.query('SELECT balance, last_withdrawal, phone FROM users WHERE id = ?', [userId], (err, results) => {
+            if (err || results.length === 0) return res.status(500).json({ error: 'User error' });
+
+            const user = results[0];
+
+            // 0. Phone Binding Security Check
+            if (user.phone) {
+                // If phone is already bound, it MUST match
+                if (user.phone !== phone) {
+                    return res.status(403).json({ error: 'مرفوض: رقم الهاتف لا يطابق الرقم المرتبط بهذا الحساب (ID).' });
+                }
+            } else {
+                // First time: Bind the phone to this ID
+                // Using a separate query to update phone to ensure it's saved before proceeding
+                db.query('UPDATE users SET phone = ? WHERE id = ?', [phone, userId]);
             }
-        }
 
-        // Process
-        const sql = `INSERT INTO transactions (user_id, type, amount, method, proof, status) VALUES (?, 'withdraw', ?, ?, ?, 'pending')`;
-        db.query(sql, [userId, amount, method, account], (err, result) => {
-            if (err) return res.status(500).json({ error: err.message });
+            // 1. Min Withdrawal
+            if (amount < 50000) return res.status(400).json({ error: 'الحد الأدنى للسحب هو 50,000 ل.س' });
 
-            // Deduct and Update Timestamp
-            db.query('UPDATE users SET balance = balance - ?, last_withdrawal = NOW() WHERE id = ?', [amount, userId]);
-            res.json({ success: true, message: 'تم إرسال طلب السحب للمراجعة' });
+            // 2. Frequency Check (24 Hours)
+            if (user.last_withdrawal) {
+                const last = new Date(user.last_withdrawal);
+                const now = new Date();
+                const diffHours = (now - last) / (1000 * 60 * 60);
+                if (diffHours < 24) return res.status(400).json({ error: 'يمكنك السحب مرة واحدة فقط كل 24 ساعة.' });
+            }
+
+            // 3. Gradual limit (50% of balance)
+            const maxWithdrawal = user.balance * 0.50;
+            if (amount > maxWithdrawal) {
+                return res.status(400).json({ error: `السحب التدريجي: لا يمكنك سحب أكثر من 50% من رصيدك (${maxWithdrawal.toFixed(0)} ل.س)` });
+            }
+
+            if (user.balance < amount) return res.status(400).json({ error: 'رصيد غير كاف' });
+
+            const sql = `INSERT INTO transactions (user_id, type, amount, method, transaction_id, status) VALUES (?, 'withdraw', ?, ?, ?, 'pending')`;
+            // We save the Phone Number as the 'transaction_id' or 'proof' field for admin reference
+            db.query(sql, [userId, amount, method, phone], (err, result) => {
+                if (err) return res.status(500).json({ error: err.message });
+
+                // Deduct Balance & Update Last Withdrawal
+                db.query('UPDATE users SET balance = balance - ?, last_withdrawal = NOW() WHERE id = ?', [amount, userId]);
+
+                res.json({ id: result.insertId, status: 'pending', message: 'تم استلام طلب السحب. سيتم تحويل المبلغ للرقم المربوط بحسابك.' });
+            });
         });
     });
-});
 
-// --- ADMIN ROUTES ---
+    // --- ADMIN ROUTES ---
 
-// Get all pending transactions
-// Get all pending transactions for Admin
-app.get('/api/admin/transactions', (req, res) => {
-    const sql = `
+    // Get all pending transactions
+    // Get all pending transactions for Admin
+    app.get('/api/admin/transactions', (req, res) => {
+        const sql = `
         SELECT t.*, u.email as user_email 
         FROM transactions t 
         JOIN users u ON t.user_id = u.id 
         WHERE t.status = 'pending' 
         ORDER BY t.created_at DESC
     `;
-    db.query(sql, (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(results);
+        db.query(sql, (err, results) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(results);
+        });
     });
-});
 
-// Process transaction (Approve/Reject)
-app.post('/api/admin/process', (req, res) => {
-    const { txnId, action, adminId } = req.body;
+    // Process transaction (Approve/Reject)
+    app.post('/api/admin/process', (req, res) => {
+        const { txnId, action, adminId } = req.body;
 
-    // 1. Get Transaction details
-    db.query('SELECT * FROM transactions WHERE id = ?', [txnId], (err, txns) => {
-        if (err || txns.length === 0) return res.status(404).json({ error: 'Transaction not found' });
-        const txn = txns[0];
+        // 1. Get Transaction details
+        db.query('SELECT * FROM transactions WHERE id = ?', [txnId], (err, txns) => {
+            if (err || txns.length === 0) return res.status(404).json({ error: 'Transaction not found' });
+            const txn = txns[0];
 
-        if (action === 'approve') {
-            const newStatus = 'success';
-            // If it's a deposit, we ADD balance to the user
-            if (txn.type === 'deposit') {
-                db.query('UPDATE users SET balance = balance + ? WHERE id = ?', [txn.amount, txn.user_id], (err) => {
+            if (action === 'approve') {
+                const newStatus = 'success';
+                // If it's a deposit, we ADD balance to the user
+                if (txn.type === 'deposit') {
+                    db.query('UPDATE users SET balance = balance + ? WHERE id = ?', [txn.amount, txn.user_id], (err) => {
+                        db.query('UPDATE transactions SET status = ? WHERE id = ?', [newStatus, txnId]);
+                        res.json({ success: true, userId: txn.user_id });
+                    });
+                } else {
+                    // Withdrawal was already deducted from balance as "hold"
                     db.query('UPDATE transactions SET status = ? WHERE id = ?', [newStatus, txnId]);
-                    res.json({ success: true, userId: txn.user_id });
-                });
+                    res.json({ success: true });
+                }
             } else {
-                // Withdrawal was already deducted from balance as "hold"
-                db.query('UPDATE transactions SET status = ? WHERE id = ?', [newStatus, txnId]);
+                // Reject: If withdrawal, refund the held amount
+                if (txn.type === 'withdraw') {
+                    db.query('UPDATE users SET balance = balance + ? WHERE id = ?', [txn.amount, txn.user_id]);
+                }
+                db.query('UPDATE transactions SET status = ? WHERE id = ?', ['rejected', txnId]);
                 res.json({ success: true });
             }
-        } else {
-            // Reject: If withdrawal, refund the held amount
-            if (txn.type === 'withdraw') {
-                db.query('UPDATE users SET balance = balance + ? WHERE id = ?', [txn.amount, txn.user_id]);
-            }
-            db.query('UPDATE transactions SET status = ? WHERE id = ?', ['rejected', txnId]);
-            res.json({ success: true });
-        }
+        });
     });
-});
 
-// Start Server
-app.listen(PORT, () => {
-    console.log(`🚀 AR Game API Server running on port ${PORT}`);
-});
+    // Start Server
+    app.listen(PORT, () => {
+        console.log(`🚀 AR Game API Server running on port ${PORT}`);
+    });
