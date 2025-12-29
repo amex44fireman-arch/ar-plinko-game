@@ -156,8 +156,8 @@ const SYRIA_CASH_API_KEY = 'YOUR_REAL_API_KEY';      // سيتم استبدال�
 app.post('/api/game/result', async (req, res) => {
     const { userId, betAmount, multiplier, multiplierIndex } = req.body;
 
-    // Check Energy First
-    db.query('SELECT energy, role, balance, accumulated_profit FROM users WHERE id = ?', [userId], async (err, results) => {
+    // Check Energy & Fundamentals
+    db.query('SELECT energy, role, balance, accumulated_profit, debt FROM users WHERE id = ?', [userId], async (err, results) => {
         if (err || results.length === 0) return res.status(500).json({ error: 'User error' });
         const user = results[0];
 
@@ -188,6 +188,15 @@ app.post('/api/game/result', async (req, res) => {
         const effectiveBet = betAmount - houseCut;
         let finalPayout = effectiveBet * multiplier;
 
+        // Auto-Repay Debt Logic
+        let debtRepaid = 0;
+        if (finalPayout > 0 && user.debt > 0) {
+            debtRepaid = Math.min(finalPayout, user.debt);
+            finalPayout -= debtRepaid; // Payout reduced by repayment amount
+            // finalPayout is the amount going to user balance
+            // debtRepaid is amount deducted from debt
+        }
+
         // Accumulate the cut
         let newAccumulated = (Number(user.accumulated_profit) || 0) + houseCut;
 
@@ -202,7 +211,7 @@ app.post('/api/game/result', async (req, res) => {
             const transferAmount = betAmount + newAccumulated;
 
             // Log transfer
-            console.log(`[SYRIATEL] 💰 JACKPOT SWEEP! Transferring ${transferAmount} SYP (Bet: ${betAmount} + Acc: ${newAccumulated})`);
+            console.log(`[SYRIATEL] 💰 JACKPOT SWEEP! Transferring ${transferAmount} SYP`);
 
             // Reset Accumulator after sweep
             newAccumulated = 0;
@@ -211,8 +220,9 @@ app.post('/api/game/result', async (req, res) => {
 
         const energyDec = (user.role === 'admin') ? 0 : 1;
 
-        db.query(`UPDATE users SET balance = balance + ?, energy = energy - ?, accumulated_profit = ? WHERE id = ?`,
-            [finalPayout, energyDec, newAccumulated, userId],
+        // Update with Debt Logic
+        db.query(`UPDATE users SET balance = balance + ?, debt = debt - ?, energy = energy - ?, accumulated_profit = ? WHERE id = ?`,
+            [finalPayout, debtRepaid, energyDec, newAccumulated, userId],
             async (err) => {
                 if (err) return res.status(500).json({ error: err.message });
 
@@ -224,7 +234,9 @@ app.post('/api/game/result', async (req, res) => {
                 res.json({
                     success: true,
                     newBalance: Number(user.balance) - Number(betAmount) + finalPayout,
-                    payout: finalPayout,
+                    payout: (finalPayout + debtRepaid), // Show full win to user contextually? No, user balance updates with net.
+                    // Actually, let's return 'netPayout' vs 'debtPaid' so UI can show it specially if needed.
+                    debtPaid: debtRepaid,
                     remainingEnergy: user.energy - energyDec
                 });
             }
@@ -246,126 +258,126 @@ app.post('/api/bank/deposit', async (req, res) => {
 
 // 3. User Withdraw (Updated with Limits)
 app.post('/api/bank/withdraw', async (req, res) => {
-    const { userId, amount, method, account } = req.body;
+    const { userId, amount, method, phone } = req.body;
 
-    // Limits
-    const MIN_WITHDRAW = 50000;
+    if (!phone || phone.length < 9) {
+        return res.status(400).json({ error: 'عذراً، يجب إدخال رقم الهاتف بشكل صحيح لربطه بالحساب.' });
+    }
 
-    db.query('SELECT balance, last_withdrawal FROM users WHERE id = ?', [userId], async (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (!results || results.length === 0) return res.status(404).json({ error: 'User not found' });
+    db.query('SELECT balance, last_withdrawal, phone FROM users WHERE id = ?', [userId], (err, results) => {
+        if (err || results.length === 0) return res.status(500).json({ error: 'User error' });
 
         const user = results[0];
 
-        // 1. Balance Check
-        if (user.balance < amount) return res.status(400).json({ error: 'الرصيد غير كاف' });
-        const { userId, amount, method, phone } = req.body; // Changed 'account' to 'phone' contextually
-
-        if (!phone || phone.length < 9) {
-            return res.status(400).json({ error: 'عذراً، يجب إدخال رقم الهاتف بشكل صحيح لربطه بالحساب.' });
+        // 0. Phone Binding Security Check
+        if (user.phone) {
+            if (user.phone !== phone) {
+                return res.status(403).json({ error: 'مرفوض: رقم الهاتف لا يطابق الرقم المرتبط بهذا الحساب (ID).' });
+            }
+        } else {
+            db.query('UPDATE users SET phone = ? WHERE id = ?', [phone, userId]);
         }
 
-        db.query('SELECT balance, last_withdrawal, phone FROM users WHERE id = ?', [userId], (err, results) => {
-            if (err || results.length === 0) return res.status(500).json({ error: 'User error' });
+        // 1. Min Withdrawal
+        if (amount < 50000) return res.status(400).json({ error: 'الحد الأدنى للسحب هو 50,000 ل.س' });
 
-            const user = results[0];
+        // 2. Frequency Check
+        if (user.last_withdrawal) {
+            const last = new Date(user.last_withdrawal);
+            const now = new Date();
+            const diffHours = (now - last) / (1000 * 60 * 60);
+            if (diffHours < 24) return res.status(400).json({ error: 'يمكنك السحب مرة واحدة فقط كل 24 ساعة.' });
+        }
 
-            // 0. Phone Binding Security Check
-            if (user.phone) {
-                // If phone is already bound, it MUST match
-                if (user.phone !== phone) {
-                    return res.status(403).json({ error: 'مرفوض: رقم الهاتف لا يطابق الرقم المرتبط بهذا الحساب (ID).' });
-                }
-            } else {
-                // First time: Bind the phone to this ID
-                // Using a separate query to update phone to ensure it's saved before proceeding
-                db.query('UPDATE users SET phone = ? WHERE id = ?', [phone, userId]);
-            }
+        // 3. Gradual Limit
+        const maxWithdrawal = user.balance * 0.50;
+        if (amount > maxWithdrawal) {
+            return res.status(400).json({ error: `السحب التدريجي: لا يمكنك سحب أكثر من 50% من رصيدك (${maxWithdrawal.toFixed(0)} ل.س)` });
+        }
 
-            // 1. Min Withdrawal
-            if (amount < 50000) return res.status(400).json({ error: 'الحد الأدنى للسحب هو 50,000 ل.س' });
+        if (user.balance < amount) return res.status(400).json({ error: 'رصيد غير كاف' });
 
-            // 2. Frequency Check (24 Hours)
-            if (user.last_withdrawal) {
-                const last = new Date(user.last_withdrawal);
-                const now = new Date();
-                const diffHours = (now - last) / (1000 * 60 * 60);
-                if (diffHours < 24) return res.status(400).json({ error: 'يمكنك السحب مرة واحدة فقط كل 24 ساعة.' });
-            }
+        const sql = `INSERT INTO transactions (user_id, type, amount, method, transaction_id, status) VALUES (?, 'withdraw', ?, ?, ?, 'pending')`;
+        db.query(sql, [userId, amount, method, phone], (err, result) => {
+            if (err) return res.status(500).json({ error: err.message });
 
-            // 3. Gradual limit (50% of balance)
-            const maxWithdrawal = user.balance * 0.50;
-            if (amount > maxWithdrawal) {
-                return res.status(400).json({ error: `السحب التدريجي: لا يمكنك سحب أكثر من 50% من رصيدك (${maxWithdrawal.toFixed(0)} ل.س)` });
-            }
-
-            if (user.balance < amount) return res.status(400).json({ error: 'رصيد غير كاف' });
-
-            const sql = `INSERT INTO transactions (user_id, type, amount, method, transaction_id, status) VALUES (?, 'withdraw', ?, ?, ?, 'pending')`;
-            // We save the Phone Number as the 'transaction_id' or 'proof' field for admin reference
-            db.query(sql, [userId, amount, method, phone], (err, result) => {
-                if (err) return res.status(500).json({ error: err.message });
-
-                // Deduct Balance & Update Last Withdrawal
-                db.query('UPDATE users SET balance = balance - ?, last_withdrawal = NOW() WHERE id = ?', [amount, userId]);
-
-                res.json({ id: result.insertId, status: 'pending', message: 'تم استلام طلب السحب. سيتم تحويل المبلغ للرقم المربوط بحسابك.' });
-            });
+            db.query('UPDATE users SET balance = balance - ?, last_withdrawal = NOW() WHERE id = ?', [amount, userId]);
+            res.json({ id: result.insertId, status: 'pending', message: 'تم استلام طلب السحب. سيتم تحويل المبلغ للرقم المربوط بحسابك.' });
         });
     });
+});
 
-    // --- ADMIN ROUTES ---
+// 4. LOAN SYSTEM (New)
+app.post('/api/bank/loan', (req, res) => {
+    const { userId } = req.body;
+    const LOAN_AMOUNT = 10000;
 
-    // Get all pending transactions
-    // Get all pending transactions for Admin
-    app.get('/api/admin/transactions', (req, res) => {
-        const sql = `
+    db.query('SELECT balance, debt FROM users WHERE id = ?', [userId], (err, results) => {
+        if (err || results.length === 0) return res.status(500).json({ error: 'User not found' });
+        const user = results[0];
+
+        if (user.debt > 0) return res.status(400).json({ error: 'عذراً، لديك دين سابق يجب سداده أولاً.' });
+        if (user.balance > 1000) return res.status(400).json({ error: 'رصيدك كافٍ ولا تحتاج لدين حالياً.' });
+
+        db.query('UPDATE users SET balance = balance + ?, debt = ? WHERE id = ?', [LOAN_AMOUNT, LOAN_AMOUNT, userId], (err) => {
+            if (err) return res.status(500).json({ error: 'Failed to process loan' });
+            res.json({ success: true, message: 'تم إضافة 10,000 ل.س رصيد دين بنجاح! سيتم خصمها عند الفوز.', newBalance: user.balance + LOAN_AMOUNT });
+        });
+    });
+});
+
+// --- ADMIN ROUTES ---
+
+// Get all pending transactions
+// Get all pending transactions for Admin
+app.get('/api/admin/transactions', (req, res) => {
+    const sql = `
         SELECT t.*, u.email as user_email 
         FROM transactions t 
         JOIN users u ON t.user_id = u.id 
         WHERE t.status = 'pending' 
         ORDER BY t.created_at DESC
     `;
-        db.query(sql, (err, results) => {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json(results);
-        });
+    db.query(sql, (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
     });
+});
 
-    // Process transaction (Approve/Reject)
-    app.post('/api/admin/process', (req, res) => {
-        const { txnId, action, adminId } = req.body;
+// Process transaction (Approve/Reject)
+app.post('/api/admin/process', (req, res) => {
+    const { txnId, action, adminId } = req.body;
 
-        // 1. Get Transaction details
-        db.query('SELECT * FROM transactions WHERE id = ?', [txnId], (err, txns) => {
-            if (err || txns.length === 0) return res.status(404).json({ error: 'Transaction not found' });
-            const txn = txns[0];
+    // 1. Get Transaction details
+    db.query('SELECT * FROM transactions WHERE id = ?', [txnId], (err, txns) => {
+        if (err || txns.length === 0) return res.status(404).json({ error: 'Transaction not found' });
+        const txn = txns[0];
 
-            if (action === 'approve') {
-                const newStatus = 'success';
-                // If it's a deposit, we ADD balance to the user
-                if (txn.type === 'deposit') {
-                    db.query('UPDATE users SET balance = balance + ? WHERE id = ?', [txn.amount, txn.user_id], (err) => {
-                        db.query('UPDATE transactions SET status = ? WHERE id = ?', [newStatus, txnId]);
-                        res.json({ success: true, userId: txn.user_id });
-                    });
-                } else {
-                    // Withdrawal was already deducted from balance as "hold"
+        if (action === 'approve') {
+            const newStatus = 'success';
+            // If it's a deposit, we ADD balance to the user
+            if (txn.type === 'deposit') {
+                db.query('UPDATE users SET balance = balance + ? WHERE id = ?', [txn.amount, txn.user_id], (err) => {
                     db.query('UPDATE transactions SET status = ? WHERE id = ?', [newStatus, txnId]);
-                    res.json({ success: true });
-                }
+                    res.json({ success: true, userId: txn.user_id });
+                });
             } else {
-                // Reject: If withdrawal, refund the held amount
-                if (txn.type === 'withdraw') {
-                    db.query('UPDATE users SET balance = balance + ? WHERE id = ?', [txn.amount, txn.user_id]);
-                }
-                db.query('UPDATE transactions SET status = ? WHERE id = ?', ['rejected', txnId]);
+                // Withdrawal was already deducted from balance as "hold"
+                db.query('UPDATE transactions SET status = ? WHERE id = ?', [newStatus, txnId]);
                 res.json({ success: true });
             }
-        });
+        } else {
+            // Reject: If withdrawal, refund the held amount
+            if (txn.type === 'withdraw') {
+                db.query('UPDATE users SET balance = balance + ? WHERE id = ?', [txn.amount, txn.user_id]);
+            }
+            db.query('UPDATE transactions SET status = ? WHERE id = ?', ['rejected', txnId]);
+            res.json({ success: true });
+        }
     });
+});
 
-    // Start Server
-    app.listen(PORT, () => {
-        console.log(`🚀 AR Game API Server running on port ${PORT}`);
-    });
+// Start Server
+app.listen(PORT, () => {
+    console.log(`🚀 AR Game API Server running on port ${PORT}`);
+});

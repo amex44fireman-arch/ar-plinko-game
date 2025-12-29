@@ -338,6 +338,97 @@ function closeBanking() {
 
 // Deposit Image Handling
 let depositProofBase64 = null;
+// --- UI Updates ---
+function updateBalanceUI() {
+    const el = $('balance-amount'); // Changed from 'balance-display' to 'balance-amount' to match existing HTML
+    const portalBal = $('portal-balance'); // Added to update portal balance
+    const userRoleEl = $('user-role-display');
+    const energyEl = $('energy-val'); // Plain text number
+
+    if (el) el.textContent = currentUser.balance.toLocaleString('en-US');
+    if (portalBal) portalBal.textContent = currentUser.balance.toLocaleString('en-US') + ' SYP'; // Update portal balance
+    if (userRoleEl) userRoleEl.textContent = currentUser.role === 'admin' ? 'مدير النظام' : 'User';
+
+    // Energy Update
+    if (energyEl) {
+        if (currentUser.role === 'admin') {
+            energyEl.parentElement.innerHTML = '⚡ طاقة لا نهائية';
+        } else {
+            energyEl.textContent = currentUser.energy;
+        }
+    }
+
+    // Loan System UI
+    let loanBtn = $('btn-loan');
+    if (!loanBtn) {
+        // Create Loan Button if not exists
+        const btn = document.createElement('button');
+        btn.id = 'btn-loan';
+        btn.className = 'action-btn';
+        btn.style.background = '#f59e0b';
+        btn.style.marginTop = '10px';
+        btn.style.width = '100%';
+        btn.style.display = 'none';
+        btn.innerText = 'طلب سلفة (10,000) 💸';
+        btn.onclick = handleLoan;
+
+        // Insert after balance card content
+        const card = document.querySelector('.balance-card');
+        if (card) card.appendChild(btn);
+        loanBtn = btn; // Assign to loanBtn for subsequent checks
+    }
+
+    const startBtn = $('start-btn');
+    if (currentUser.isDemo) {
+        if (startBtn) startBtn.disabled = false;
+        if (loanBtn) loanBtn.style.display = 'none';
+    } else {
+        // Real User Logic
+
+        // Show Loan Button if Balance < 1000 AND No Debt
+        if (currentUser.balance < 1000 && (!currentUser.debt || currentUser.debt <= 0)) {
+            if (loanBtn) loanBtn.style.display = 'block';
+        } else {
+            if (loanBtn) loanBtn.style.display = 'none';
+        }
+
+        // Show Debt Indicator
+        let debtEl = $('debt-display');
+        if (currentUser.debt > 0) {
+            if (!debtEl) {
+                const d = document.createElement('div');
+                d.id = 'debt-display';
+                d.style.color = '#ef4444';
+                d.style.marginTop = '5px';
+                d.style.fontSize = '0.9rem';
+                d.innerHTML = `عليك دين: <b>${currentUser.debt.toLocaleString()}</b> ل.س (يخصم من الأرباح)`;
+                document.querySelector('.balance-card').appendChild(d);
+                debtEl = d; // Assign to debtEl for subsequent updates
+            } else {
+                debtEl.innerHTML = `عليك دين: <b>${currentUser.debt.toLocaleString()}</b> ل.س (يخصم من الأرباح)`;
+                debtEl.style.display = 'block';
+            }
+        } else {
+            if (debtEl) debtEl.style.display = 'none';
+        }
+    }
+}
+
+async function handleLoan() {
+    if (!confirm('هل تريد استلاف 10,000 ل.س؟\n\nسيتم خصم هذا المبلغ تلقائياً من أرباحك القادمة.')) return;
+
+    try {
+        const res = await axios.post(`${API_URL}/api/bank/loan`, { userId: currentUser.id });
+        if (res.data.success) {
+            alert(res.data.message);
+            currentUser.balance = res.data.newBalance;
+            currentUser.debt = 10000; // Client-side optimistic update
+            updateBalanceUI();
+        }
+    } catch (e) {
+        alert(e.response?.data?.error || 'فشل طلب السلفة');
+    }
+}
 function setupDepositListeners() {
     const zone = $('dep-upload-zone');
     const input = $('dep-proof-img');
