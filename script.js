@@ -594,11 +594,7 @@ function renderHistory() {
 }
 
 // --- Game Logic ---
-function updateBalanceUI() {
-    const bal = currentUser.balance.toLocaleString();
-    $('balance-amount').textContent = bal;
-    $('portal-balance').textContent = bal + ' SYP';
-}
+
 
 function adjustBet(delta) {
     let next = currentBet + delta;
@@ -1088,7 +1084,7 @@ CONFIG.MULTIPLIERS.forEach((m, i) => {
     d.style.borderBottom = `3px solid ${clrs[i]}`;
     buckets.appendChild(d);
 });
-}
+
 
 // Utils
 const $ = (id) => document.getElementById(id);
