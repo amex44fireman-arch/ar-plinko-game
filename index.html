@@ -294,6 +294,8 @@
                         <button onclick="switchAdminSubView('pending')" class="sub-nav-btn active">طلبات معلقة</button>
                         <button onclick="switchAdminSubView('users')" class="sub-nav-btn">جميع اللاعبين</button>
                         <button onclick="switchAdminSubView('history')" class="sub-nav-btn">سجل العمليات</button>
+                        <button onclick="switchAdminSubView('revenue')" class="sub-nav-btn"
+                            style="background:#1a472a; border-color:#10b981;">💰 أرباحي</button>
                     </div>
 
                     <div id="admin-pending-view" class="admin-sub-panel">
@@ -351,6 +353,56 @@
                                 </thead>
                                 <tbody id="admin-history-body"></tbody>
                             </table>
+                        </div>
+                    </div>
+
+                    <div id="admin-revenue-view" class="admin-sub-panel" style="display:none;">
+                        <div id="revenue-pin-gate" style="text-align:center; padding:40px;">
+                            <h3 style="color:var(--gold); margin-bottom:20px;">🔒 قسم الأرباح محمي</h3>
+                            <p style="margin-bottom:20px; opacity:0.7;">أدخل رمز PIN للوصول</p>
+                            <input type="password" id="revenue-pin-input" placeholder="أدخل الرمز"
+                                style="padding:10px; background:#111; border:1px solid var(--gold); color:white; text-align:center; font-size:1.2rem; width:250px; border-radius:8px;">
+                            <br><br>
+                            <button onclick="unlockRevenue()" class="action-btn"
+                                style="background:var(--gold); color:black;">فتح 🔓</button>
+                        </div>
+
+                        <div id="revenue-content" style="display:none;">
+                            <div
+                                style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:20px; margin-bottom:30px;">
+                                <div class="revenue-card">
+                                    <div class="revenue-label">إجمالي الأرباح</div>
+                                    <div class="revenue-value" id="rev-total">0</div>
+                                </div>
+                                <div class="revenue-card">
+                                    <div class="revenue-label">خسائر اللاعبين</div>
+                                    <div class="revenue-value" id="rev-losses">0</div>
+                                </div>
+                                <div class="revenue-card">
+                                    <div class="revenue-label">مبيعات الطاقة</div>
+                                    <div class="revenue-value" id="rev-energy">0</div>
+                                </div>
+                                <div class="revenue-card">
+                                    <div class="revenue-label">صافي الربح</div>
+                                    <div class="revenue-value" id="rev-net" style="color:#10b981;">0</div>
+                                </div>
+                            </div>
+
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                                <div class="revenue-card">
+                                    <div class="revenue-label">إجمالي الإيداعات</div>
+                                    <div class="revenue-value" id="rev-deposits" style="color:#60a5fa;">0</div>
+                                </div>
+                                <div class="revenue-card">
+                                    <div class="revenue-label">إجمالي السحوبات</div>
+                                    <div class="revenue-value" id="rev-withdrawals" style="color:#f87171;">0</div>
+                                </div>
+                            </div>
+
+                            <div class="revenue-card" style="margin-top:20px;">
+                                <div class="revenue-label">ديون نشطة (قروض)</div>
+                                <div class="revenue-value" id="rev-loans" style="color:#facc15;">0</div>
+                            </div>
                         </div>
                     </div>
                 </section>

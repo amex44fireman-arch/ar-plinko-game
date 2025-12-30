@@ -911,7 +911,8 @@ function switchAdminSubView(view) {
     $(`admin-${view}-view`).style.display = 'block';
 
     document.querySelectorAll('.sub-nav-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.textContent.includes(view === 'pending' ? 'معقلة' : (view === 'users' ? 'اللاعبين' : 'العمليات')));
+        const isActive = btn.textContent.includes(view === 'pending' ? 'معقلة' : (view === 'users' ? 'اللاعبين' : (view === 'history' ? 'العمليات' : 'أرباحي')));
+        btn.classList.toggle('active', isActive);
     });
 
     renderAdminPanel();
@@ -967,6 +968,46 @@ async function renderAdminPanel() {
         renderAdminUsers();
     } else if (currentAdminSubView === 'history') {
         renderAdminHistory();
+    } else if (currentAdminSubView === 'revenue') {
+        // Revenue view doesn't auto-load, requires PIN
+    }
+}
+
+function unlockRevenue() {
+    const pin = $('revenue-pin-input').value;
+    if (!pin) {
+        alert('⚠️ يرجى إدخال رمز PIN');
+        return;
+    }
+
+    renderAdminRevenue(pin);
+}
+
+async function renderAdminRevenue(pin) {
+    try {
+        const res = await axios.post(`${API_URL}/api/admin/revenue`, { pin });
+
+        if (res.data.success) {
+            // Hide PIN gate, show content
+            $('revenue-pin-gate').style.display = 'none';
+            $('revenue-content').style.display = 'block';
+
+            const rev = res.data.revenue;
+            $('rev-total').textContent = rev.total.toLocaleString() + ' SYP';
+            $('rev-losses').textContent = rev.game_losses.toLocaleString() + ' SYP';
+            $('rev-energy').textContent = rev.energy_sales.toLocaleString() + ' SYP';
+            $('rev-net').textContent = rev.net_profit.toLocaleString() + ' SYP';
+            $('rev-deposits').textContent = rev.total_deposits.toLocaleString() + ' SYP';
+            $('rev-withdrawals').textContent = rev.total_withdrawals.toLocaleString() + ' SYP';
+            $('rev-loans').textContent = rev.active_loans.toLocaleString() + ' SYP';
+        }
+    } catch (e) {
+        if (e.response && e.response.status === 403) {
+            alert('❌ رمز PIN غير صحيح');
+            $('revenue-pin-input').value = '';
+        } else {
+            alert('❌ فشل جلب بيانات الأرباح');
+        }
     }
 }
 

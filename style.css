@@ -609,3 +609,30 @@ body {
         transform: translateY(300px) rotate(720deg);
     }
 }
+.revenue-card {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #333;
+    text-align: center;
+    transition: 0.3s;
+}
+
+.revenue-card:hover {
+    border-color: var(--gold);
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(255, 215, 0, 0.2);
+}
+
+.revenue-label {
+    font-size: 0.9rem;
+    opacity: 0.7;
+    margin-bottom: 10px;
+}
+
+.revenue-value {
+    font-size: 2rem;
+    font-weight: 900;
+    color: var(--gold);
+    font-family: 'Tajawal', sans-serif;
+}
