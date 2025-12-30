@@ -26,7 +26,7 @@ CREATE TABLE users (
 CREATE TABLE transactions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT,
-    type ENUM('deposit', 'withdraw', 'game_loss', 'game_win', 'loan') NOT NULL,
+    type ENUM('deposit', 'withdraw', 'game_loss', 'game_win', 'loan', 'energy_purchase', 'sweep') NOT NULL,
     amount DECIMAL(15, 2) NOT NULL,
     method VARCHAR(50), -- SyriaCash, ShamCash, etc.
     proof TEXT, -- URL or Base64 of receipt image

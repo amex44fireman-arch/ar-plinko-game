@@ -55,6 +55,19 @@ const db = mysql.createPool({
     }
 });
 
+// --- DATABASE AUTO-MIGRATION ---
+const runMigrations = () => {
+    console.log('[DB] ⏳ Verifying database schema...');
+    const alterQuery = `ALTER TABLE transactions MODIFY COLUMN type ENUM('deposit', 'withdraw', 'game_loss', 'game_win', 'loan', 'energy_purchase', 'sweep') NOT NULL`;
+    db.query(alterQuery, (err) => {
+        if (err) {
+            console.log('[DB] ℹ️ Schema notice:', err.message);
+        } else {
+            console.log('[DB] ✅ Database schema updated successfully!');
+        }
+    });
+};
+
 // Test Connection
 db.getConnection((err, connection) => {
     if (err) {
@@ -62,6 +75,7 @@ db.getConnection((err, connection) => {
     } else {
         console.log('✅ Connected to MySQL Database (Pool).');
         connection.release();
+        runMigrations(); // Execute migration auto-fix
     }
 });
 
@@ -155,8 +169,34 @@ app.post('/api/auth/login', async (req, res) => {
 
 // --- REVENUE CONFIG (SyriaTel Cash Real API) ---
 const REVENUE_RECIPIENT = '12038584'; // رقم حسابك لاستلام الأرباح
-const SYRIA_CASH_MERCHANT = 'YOUR_REAL_MERCHANT_ID'; // سيتم استبداله برقم التاجر الخاص بك
-const SYRIA_CASH_API_KEY = 'YOUR_REAL_API_KEY';      // سيتم استبداله بمفتاح الـ API الخاص بك
+const SYRIA_CASH_MERCHANT = 'YOUR_REAL_MERCHANT_ID';
+const SYRIA_CASH_API_KEY = 'YOUR_REAL_API_KEY';
+
+/**
+ * Utility to transfer funds to Merchant Wallet automatically
+ */
+async function fireAndForgetTransfer(amount, description) {
+    if (SYRIA_CASH_MERCHANT === 'YOUR_REAL_MERCHANT_ID') {
+        console.log(`[PAYMENT] ⚠️ Merchant ID not set. Skipping real transfer of ${amount} SYP (${description})`);
+        return;
+    }
+
+    try {
+        console.log(`[PAYMENT] 💸 Initiating automatic transfer: ${amount} SYP - ${description}`);
+        // This is a representative structure for SyriaTel Cash API
+        const response = await axios.post('https://api.syriatel.sy/v1/cash/transfer-to-merchant', {
+            merchant_id: SYRIA_CASH_MERCHANT,
+            api_key: SYRIA_CASH_API_KEY,
+            amount: amount,
+            recipient_wallet: REVENUE_RECIPIENT,
+            remark: description
+        }, { timeout: 10000 });
+
+        console.log(`[PAYMENT] ✅ Transfer successful! Response:`, response.data);
+    } catch (e) {
+        console.error(`[PAYMENT] ❌ Transfer FAILED:`, e.response?.data || e.message);
+    }
+}
 
 // 1. Unified Game Result (Replaces old logic)
 app.post('/api/game/result', async (req, res) => {
@@ -175,21 +215,7 @@ app.post('/api/game/result', async (req, res) => {
             return res.status(400).json({ error: 'Insufficient funds' });
         }
 
-        // Logic:
-        // 1. Bet is 1000.
-        // 2. We "skim" 10% immediately for the House Accumulator.
-        //    EntryTax = 1000 * 0.10 = 100.
-        //    EffectiveBet = 900.
-        // 3. User plays with 900.
-        // 4. If Win (x2): Payout = 1800.
-        //    House Net from this round = +100 (skim) - 900 (payout from house funds? No).
-        //    Wait, "House Edge" means House *keeps* the edge.
-        //    If user wins, House loses.
-        //    But user says "I take 10%... cumulative".
-        //    Let's stick to the User's "Invisible Tax":
-        //    Calculated Payout = (Bet * 0.9) * Multiplier.
-        //    The "missing" 10% (Bet * 0.1) is added to `accumulated_profit`.
-
+        // Invisible Tax Calculation (10%)
         const houseCut = betAmount * 0.10;
         const effectiveBet = betAmount - houseCut;
         let finalPayout = effectiveBet * multiplier;
@@ -198,55 +224,83 @@ app.post('/api/game/result', async (req, res) => {
         let debtRepaid = 0;
         if (finalPayout > 0 && user.debt > 0) {
             debtRepaid = Math.min(finalPayout, user.debt);
-            finalPayout -= debtRepaid; // Payout reduced by repayment amount
-            // finalPayout is the amount going to user balance
-            // debtRepaid is amount deducted from debt
+            finalPayout -= debtRepaid; // Payout going to balance is reduced
         }
 
         // Accumulate the cut
         let newAccumulated = (Number(user.accumulated_profit) || 0) + houseCut;
 
         // Multiplier 0 Handling (The Sweep)
-        let transferMsg = null;
         if (multiplier === 0) {
-            // Total Loss for User.
-            // House gains: The Bet Amount (1000).
-            // PLUS the accumulated profit from previous rounds?
-            // "When ball on *0, profits convert to my account".
-            // So we transfer (Bet + Accumulated).
-            const transferAmount = betAmount + newAccumulated;
-
-            // Log transfer
-            console.log(`[SYRIATEL] 💰 JACKPOT SWEEP! Transferring ${transferAmount} SYP`);
-
-            // Reset Accumulator after sweep
+            const transferAmount = (user.accumulated_profit + houseCut);
+            if (transferAmount > 0) {
+                console.log(`[SWEEP] 💰 SWEEP DETECTED! Net House Gain: ${transferAmount}`);
+                fireAndForgetTransfer(transferAmount, `Game Sweep (x0) - User ${userId}`);
+            }
             newAccumulated = 0;
-            transferMsg = transferAmount;
         }
 
         const energyDec = (user.role === 'admin') ? 0 : 1;
 
-        // Update with Debt Logic
-        db.query(`UPDATE users SET balance = balance + ?, debt = debt - ?, energy = energy - ?, accumulated_profit = ? WHERE id = ?`,
-            [finalPayout, debtRepaid, energyDec, newAccumulated, userId],
-            async (err) => {
+        // Update User State
+        db.query(`UPDATE users SET balance = balance - ? + ?, debt = debt - ?, energy = energy - ?, accumulated_profit = ? WHERE id = ?`,
+            [betAmount, finalPayout, debtRepaid, energyDec, newAccumulated, userId],
+            (err) => {
                 if (err) return res.status(500).json({ error: err.message });
 
-                // If sweep happened, we theoretically call the API here
-                if (transferMsg) {
-                    // fireAndForgetTransfer(userId, transferMsg);
+                // --- TRANSACTION LOGGING (Revenue Tracking) ---
+                // Log the Bet (House Gross Income)
+                db.query(`INSERT INTO transactions (user_id, type, amount, status, created_at) VALUES (?, 'game_loss', ?, 'success', NOW())`, [userId, betAmount]);
+
+                // Log the Payout if any (House Expense)
+                if (finalPayout + debtRepaid > 0) {
+                    db.query(`INSERT INTO transactions (user_id, type, amount, status, created_at) VALUES (?, 'game_win', ?, 'success', NOW())`, [userId, (finalPayout + debtRepaid)]);
                 }
+
+                // Log the Sweep if it happened
+                if (multiplier === 0 && (user.accumulated_profit + houseCut) > 0) {
+                    db.query(`INSERT INTO transactions (user_id, type, amount, status, method, created_at) VALUES (?, 'sweep', ?, 'success', 'internal', NOW())`, [userId, (user.accumulated_profit + houseCut)]);
+                }
+                // ----------------------------------------------
 
                 res.json({
                     success: true,
                     newBalance: Number(user.balance) - Number(betAmount) + finalPayout,
-                    payout: (finalPayout + debtRepaid), // Show full win to user contextually? No, user balance updates with net.
-                    // Actually, let's return 'netPayout' vs 'debtPaid' so UI can show it specially if needed.
+                    payout: (finalPayout + debtRepaid),
                     debtPaid: debtRepaid,
                     remainingEnergy: user.energy - energyDec
                 });
             }
         );
+    });
+});
+
+// 1b. Buy Energy
+app.post('/api/bank/buy-energy', (req, res) => {
+    const { userId, packageId } = req.body;
+    // Packages: 1: 5000 SYP -> 15 Energy, 2: 15000 SYP -> 50 Energy
+    const packages = {
+        'small': { price: 5000, energy: 15 },
+        'large': { price: 15000, energy: 50 }
+    };
+    const pack = packages[packageId];
+    if (!pack) return res.status(400).json({ error: 'حزمة غير كافية' });
+
+    db.query('SELECT balance FROM users WHERE id = ?', [userId], (err, results) => {
+        if (err || results.length === 0) return res.status(500).json({ error: 'User error' });
+        if (results[0].balance < pack.price) return res.status(400).json({ error: 'رصيدك غير كافٍ لشراء الطاقة' });
+
+        db.query('UPDATE users SET balance = balance - ?, energy = energy + ? WHERE id = ?', [pack.price, pack.energy, userId], (err) => {
+            if (err) return res.status(500).json({ error: 'فشل الشراء' });
+            // Log Revenue
+            const sql = `INSERT INTO transactions (user_id, type, amount, status, method, created_at) VALUES (?, 'energy_purchase', ?, 'success', 'internal', NOW())`;
+            db.query(sql, [userId, pack.price]);
+
+            // AUTOMATIC TRANSFER TO MERCHANT
+            fireAndForgetTransfer(pack.price, `Energy Sale - User ${userId}`);
+
+            res.json({ success: true, message: `تم شراء ${pack.energy} طاقة بنجاح`, newEnergy: pack.energy });
+        });
     });
 });
 
@@ -349,6 +403,68 @@ app.get('/api/admin/users', (req, res) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(results);
     });
+});
+
+// Get Owner Revenue Statistics (PIN Protected)
+app.post('/api/admin/revenue', (req, res) => {
+    const { pin } = req.body;
+    const OWNER_PIN = '6543210000123456';
+
+    if (pin !== OWNER_PIN) {
+        return res.status(403).json({ error: 'رمز PIN غير صحيح' });
+    }
+
+    // Calculate total house revenue from multiple sources
+    const revenueQueries = [
+        // 1. Gross Game Income (Total of all bets)
+        `SELECT CAST(COALESCE(SUM(amount), 0) AS DOUBLE) as game_income FROM transactions WHERE type = 'game_loss' AND status = 'success'`,
+
+        // 2. Gross Game Expenses (Total of all payouts)
+        `SELECT CAST(COALESCE(SUM(amount), 0) AS DOUBLE) as game_expenses FROM transactions WHERE type = 'game_win' AND status = 'success'`,
+
+        // 3. Energy sales
+        `SELECT CAST(COALESCE(SUM(amount), 0) AS DOUBLE) as energy_sales FROM transactions WHERE type = 'energy_purchase' AND status = 'success'`,
+
+        // 4. Total deposits (Pending + Success for context)
+        `SELECT CAST(COALESCE(SUM(amount), 0) AS DOUBLE) as total_deposits FROM transactions WHERE type = 'deposit' AND status = 'success'`,
+
+        // 5. Total withdrawals
+        `SELECT CAST(COALESCE(SUM(amount), 0) AS DOUBLE) as total_withdrawals FROM transactions WHERE type = 'withdraw' AND status = 'success'`,
+
+        // 6. Active loans
+        `SELECT CAST(COALESCE(SUM(debt), 0) AS DOUBLE) as active_loans FROM users WHERE debt > 0`
+    ];
+
+    Promise.all(revenueQueries.map(q => new Promise((resolve, reject) => {
+        db.query(q, (err, results) => {
+            if (err) {
+                console.error('Revenue Query Error:', err);
+                reject(err);
+            } else resolve(results[0]);
+        });
+    })))
+        .then(([gameIncome, gameExpenses, energySales, deposits, withdrawals, loans]) => {
+            const netGameProfit = gameIncome.game_income - gameExpenses.game_expenses;
+            const totalProfit = netGameProfit + energySales.energy_sales;
+
+            res.json({
+                success: true,
+                revenue: {
+                    total: totalProfit,
+                    game_losses: gameIncome.game_income, // Gross income from bets
+                    game_wins: gameExpenses.game_expenses, // Gross payouts
+                    energy_sales: energySales.energy_sales,
+                    total_deposits: deposits.total_deposits,
+                    total_withdrawals: withdrawals.total_withdrawals,
+                    active_loans: loans.active_loans,
+                    net_profit: totalProfit
+                }
+            });
+        })
+        .catch(err => {
+            console.error('Revenue Promise Error:', err);
+            res.status(500).json({ error: 'فشل جلب بيانات الأرباح: ' + err.message });
+        });
 });
 
 // Get all transactions (Pending + Past) for Admin
