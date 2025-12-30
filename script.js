@@ -9,12 +9,20 @@ console.log(`%c AR GAME v${VERSION} LOADED`, 'background: #000; color: #ffd700; 
 
 // --- 🚩 SMART API CONFIGURATION 🚩 ---
 if (typeof axios !== 'undefined') axios.defaults.timeout = 60000;
-// Automatically detects your server. No need to manual edit!
-// Automatically detects your server. No need to manual edit!
-const getSavedAPI = () => localStorage.getItem('ar_api_url') || 'https://game-server-example.onrender.com'; // Default to a placeholder if needed
+
+// HARDCODED API URL - Users will connect to this automatically
+const PRODUCTION_API_URL = 'https://ar-plinko-game-11.onrender.com'; // ⚠️ REPLACE WITH YOUR ACTUAL RENDER URL
+
+const getSavedAPI = () => localStorage.getItem('ar_api_url') || PRODUCTION_API_URL;
 let API_URL = getSavedAPI();
 
 function configServer() {
+    // Admin-only feature
+    if (!currentUser || currentUser.role !== 'admin') {
+        alert('⚠️ هذه الميزة متاحة للمدير فقط');
+        return;
+    }
+
     let newUrl = prompt('الرجاء إدخال رابط الـ API (مثال: https://ar-plinko-game-6.onrender.com):', API_URL);
     if (newUrl) {
         newUrl = newUrl.trim().replace(/\/$/, "");
@@ -121,12 +129,11 @@ function init() {
         .catch(err => {
             console.error('❌ Server Offline:', err);
             let msg = 'فشل الاتصال بالسيرفر.\n';
-            if (err.code === 'ERR_NETWORK') msg += 'تأكد من الرابط (هل هو HTTPS؟) ومن تشغيل السيرفر.';
+            if (err.code === 'ERR_NETWORK') msg += 'يرجى المحاولة لاحقاً أو التواصل مع الدعم الفني.';
             else msg += `رمز الخطأ: ${err.message}`;
 
-            if (confirm(`${msg}\n\nهل تريد محاولة ضبط الرابط مرة أخرى؟`)) {
-                configServer();
-            }
+            alert(msg);
+            // Config option removed for regular users - only admin can access via logo clicks
         });
 
     const safeClick = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
@@ -808,17 +815,65 @@ async function processWin(idx) {
 
 function showFloat(txt, color = 'var(--gold)') {
     const el = document.createElement('div');
-    el.textContent = txt;
-    el.className = 'win-float';
-    el.style.color = color;
-    el.style.left = '50%';
-    el.style.top = '50%';
-    el.style.position = 'absolute';
-    el.style.transform = 'translate(-50%, -50%)';
-    el.style.pointerEvents = 'none';
-    el.style.zIndex = '300';
+
+    // Determine if win or loss
+    const isWin = txt.includes('+');
+    const isLoss = txt.includes('-');
+
+    // Add icon based on result
+    let icon = '';
+    if (isWin) icon = '🎉 ';
+    else if (isLoss) icon = '💔 ';
+
+    el.innerHTML = `
+        <div style="
+            font-size: 2.5rem;
+            font-weight: 900;
+            text-shadow: 0 0 20px ${color}, 0 0 40px ${color};
+            animation: floatUp 2s ease-out forwards;
+            font-family: 'Tajawal', sans-serif;
+        ">
+            ${icon}${txt}
+        </div>
+    `;
+
+    el.style.cssText = `
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        z-index: 300;
+        color: ${color};
+    `;
+
     $('plinko-board-container').appendChild(el);
-    setTimeout(() => el.remove(), 1500);
+
+    // Add confetti effect for big wins
+    if (isWin && txt.includes('×')) {
+        createConfetti();
+    }
+
+    setTimeout(() => el.remove(), 2000);
+}
+
+function createConfetti() {
+    const container = $('plinko-board-container');
+    for (let i = 0; i < 30; i++) {
+        const confetti = document.createElement('div');
+        confetti.style.cssText = `
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: ${['#ffd700', '#ff6b6b', '#4ecdc4', '#45b7d1'][Math.floor(Math.random() * 4)]};
+            left: ${50 + (Math.random() - 0.5) * 20}%;
+            top: 40%;
+            animation: confettiFall ${1 + Math.random()}s ease-out forwards;
+            opacity: 0;
+        `;
+        container.appendChild(confetti);
+        setTimeout(() => confetti.remove(), 2000);
+    }
 }
 
 function createParticles(idx) {
