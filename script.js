@@ -11,17 +11,12 @@ console.log(`%c AR GAME v${VERSION} LOADED`, 'background: #000; color: #ffd700; 
 if (typeof axios !== 'undefined') axios.defaults.timeout = 60000;
 
 // HARDCODED API URL - Users will connect to this automatically
-const PRODUCTION_API_URL = 'https://ar-plinko-game-11.onrender.com'; // ⚠️ REPLACE WITH YOUR ACTUAL RENDER URL
+const PRODUCTION_API_URL = 'https://ar-plinko-game-x8pc.onrender.com'; // ⚠️ REPLACE WITH YOUR ACTUAL RENDER URL
 
 const getSavedAPI = () => localStorage.getItem('ar_api_url') || PRODUCTION_API_URL;
 let API_URL = getSavedAPI();
 
 function configServer() {
-    // Admin-only feature
-    if (!currentUser || currentUser.role !== 'admin') {
-        alert('⚠️ هذه الميزة متاحة للمدير فقط');
-        return;
-    }
 
     let newUrl = prompt('الرجاء إدخال رابط الـ API (مثال: https://ar-plinko-game-6.onrender.com):', API_URL);
     if (newUrl) {
