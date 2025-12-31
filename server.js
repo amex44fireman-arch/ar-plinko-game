@@ -11,7 +11,7 @@
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcryptjs'); // Switched to bcryptjs for faster Render builds
 const axios = require('axios');
 const path = require('path');
 
@@ -21,40 +21,52 @@ const PORT = process.env.PORT || 3000;
 // --- 👑 MASTER CONFIGURATION BLOCK 👑 ---
 // يرجى تعبئة البيانات التالية بدقة للربط مع حسابك التاجر
 const SYRIATEL_CASH_CONFIG = {
-    MERCHANT_ID: process.env.SYRIA_MERCHANT_ID || 'YOUR_MERCHANT_ID_HERE', // رقم التاجر الخاص بك
-    API_KEY: process.env.SYRIA_API_KEY || 'YOUR_API_KEY_HERE',           // مفتاح الـ API الخاص بك
-    WALLET_NUMBER: '12038584', // رقم محفظتك لاستلام الأرباح
-    AUTO_TRANSFER: true        // تفعيل التحويل التلقائي للأرباح
+    MERCHANT_ID: process.env.SYRIA_MERCHANT_ID || 'YOUR_MERCHANT_ID_HERE',
+    API_KEY: process.env.SYRIA_API_KEY || 'YOUR_API_KEY_HERE',
+    WALLET_NUMBER: '12038584',
+    AUTO_TRANSFER: true
 };
-// ---------------------------------------
-
-const express = require('express');
-const mysql = require('mysql2');
-const cors = require('cors');
-const bcrypt = require('bcryptjs'); // Switched to bcryptjs for faster Render builds
-
-const app = express();
-const axios = require('axios'); // Remember to run: npm install axios
-const PORT = process.env.PORT || 3000;
 
 // --- PAYMENT API CONFIGURATION ---
-// IMPORTANT: Put your real keys here. Do NOT share this file with anyone.
 const PAYMENT_CONFIG = {
     SYRIA_CASH: {
-        API_KEY: process.env.SYRIA_CASH_KEY || 'YOUR_SYRIA_CASH_KEY',
-        MERCHANT_ID: process.env.SYRIA_CASH_MERCHANT || 'YOUR_MERCHANT_ID',
+        API_KEY: SYRIATEL_CASH_CONFIG.API_KEY,
+        MERCHANT_ID: SYRIATEL_CASH_CONFIG.MERCHANT_ID,
         ENDPOINT: process.env.SYRIA_CASH_URL || 'https://apisyria.com/api/v1'
-    },
-    SHAM_CASH: {
-        // Placeholder for future integration
-        API_KEY: 'PENDING',
-        ENDPOINT: 'PENDING'
     }
 };
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// --- SECURE STARTUP & HEALTH ---
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'UP',
+        time: new Date().toISOString(),
+        port: PORT,
+        env: process.env.NODE_ENV || 'production',
+        db_status: db ? 'pool_active' : 'pool_missing'
+    });
+});
+
+app.get('/api/ping', (req, res) => res.json({ status: 'alive', timestamp: Date.now() }));
+
+// CRITICAL: Start listening IMMEDIATELY to satisfy Render's health check
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 AR Game Server initialized on port ${PORT}`);
+    console.log(`📡 URL: http://0.0.0.0:${PORT}`);
+});
+
+// Avoid app crashing on unexpected errors
+process.on('uncaughtException', (err) => {
+    console.error('💥 FATAL UNCAUGHT EXCEPTION:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('💥 UNHANDLED REJECTION:', reason);
+});
 
 // --- Database Connection ---
 // Replace with your real SQL credentials provided by your host
@@ -575,7 +587,4 @@ app.post('/api/admin/process', (req, res) => {
     });
 });
 
-// Start Server
-app.listen(PORT, () => {
-    console.log(`🚀 AR Game API Server running on port ${PORT}`);
-});
+// Server start moved to top for Render stability
