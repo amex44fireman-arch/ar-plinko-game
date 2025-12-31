@@ -188,6 +188,15 @@ app.post('/api/auth/login', async (req, res) => {
     });
 });
 
+// 3. Auth: Session Restore
+app.get('/api/auth/me/:email', (req, res) => {
+    const { email } = req.params;
+    db.query('SELECT id, first_name, last_name, email, balance, role, energy, debt, accumulated_profit FROM users WHERE email = ?', [email], (err, results) => {
+        if (err || results.length === 0) return res.status(404).json({ error: 'User not found' });
+        res.json({ success: true, user: results[0] });
+    });
+});
+
 const SYRIA_CASH_MERCHANT = SYRIATEL_CASH_CONFIG.MERCHANT_ID;
 const SYRIA_CASH_API_KEY = SYRIATEL_CASH_CONFIG.API_KEY;
 
