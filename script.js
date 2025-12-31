@@ -292,6 +292,32 @@ function loginUser(user) {
     fetchEnergy();
 }
 
+async function refreshUserData() {
+    if (!currentUser || currentUser.isDemo) return;
+    try {
+        const res = await axios.get(`${API_URL}/api/game/energy/${currentUser.id}`);
+        // We can extend this to a /api/auth/me later if needed
+        if (res.data.success) {
+            currentUser.energy = res.data.energy;
+            // Balance is often updated separately or we need a full sync
+            dbQueryUser(currentUser.id);
+        }
+    } catch (e) { }
+}
+
+async function dbQueryUser(id) {
+    try {
+        const res = await axios.get(`${API_URL}/api/admin/users`); // We can use the admin endpoint if allowed or add a specific one
+        const user = res.data.find(u => u.id === id);
+        if (user) {
+            currentUser.balance = Number(user.balance);
+            currentUser.debt = Number(user.debt);
+            updateBalanceUI();
+            updateEnergyUI();
+        }
+    } catch (e) { }
+}
+
 function fetchEnergy() {
     if (!currentUser || currentUser.isDemo) return;
     axios.get(`${API_URL}/api/game/energy/${currentUser.id}`)
@@ -508,8 +534,21 @@ function switchView(viewId) {
 
     // Existing view-specific logic
     if (viewId === 'history') renderTransactions();
-    if (viewId === 'deposit') goToDepositStep(1);
-    if (viewId === 'withdraw') goToWithdrawStep(1);
+    if (viewId === 'deposit') {
+        goToDepositStep(1);
+        if ($('dep-user-id-confirm')) $('dep-user-id-confirm').value = currentUser.id;
+    }
+    if (viewId === 'withdraw') {
+        goToWithdrawStep(1);
+        if ($('with-user-id-confirm')) $('with-user-id-confirm').value = currentUser.id;
+    }
+    if (viewId === 'loan') {
+        const btn = $('btn-loan');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = 'إرسال طلب سلفة';
+        }
+    }
 }
 
 function closeAdminView() {
@@ -535,12 +574,15 @@ async function submitDeposit() {
     const amount = parseInt($('dep-amount').value);
     const method = $('dep-method').value;
     const txnId = $('dep-txn-id').value;
+    const typedId = $('dep-user-id-confirm').value;
 
     if (!amount || amount < CONFIG.MIN_DEP) return alert(`الحد الأدنى للإيداع هو ${CONFIG.MIN_DEP} SYP`);
     if (!txnId) return alert('يرجى إدخال رقم العملية');
+    if (!typedId || Number(typedId) !== currentUser.id) return alert('❌ رقم المعرف (ID) غير مطابق لحسابك الحالي!');
     if (!depositProofBase64) return alert('يرجى رفع صورة إشعار الدفع');
 
     try {
+        showLoading(true);
         const res = await axios.post(`${API_URL}/api/bank/deposit`, {
             userId: currentUser.id,
             amount: amount,
@@ -552,8 +594,11 @@ async function submitDeposit() {
         alert('✅ تم إرسال طلبك بنجاح. سيتم مراجعة الطلب وإضافة الرصيد فوراً عند مطابقة البيانات.');
         closeBanking();
         depositProofBase64 = null; // reset
+        refreshUserData();
     } catch (e) {
-        alert('خطأ في إرسال الطلب');
+        alert('خطأ في إرسال طلب الإيداع');
+    } finally {
+        showLoading(false);
     }
 }
 
@@ -572,44 +617,38 @@ function goToWithdrawStep(step) {
     }
 }
 
-function submitWithdraw() {
+async function submitWithdraw() {
     if (!NetworkMonitor.checkQuery()) return;
+
     const amount = Number($('with-amount').value);
-
-    if (isNaN(amount) || amount <= 0) return alert('يرجى إدخال مبلغ صحيح');
-    if (amount < 10000) return alert('الحد الأدنى للسحب هو 10,000 SYP');
-    if (amount > currentUser.balance) return alert('رصيد غير كافٍ لسحب هذا المبلغ');
-
     const account = $('with-account').value;
-    if (!account) return alert('يرجى إدخال رقم الحساب المستلم');
+    const method = $('with-method').value || 'SyriaCash';
+    const confirmedId = $('with-user-id-confirm').value;
 
-    const method = pendingTxn.method;
+    if (isNaN(amount) || amount < 50000) return alert('الحد الأدنى للسحب هو 50,000 SYP');
+    if (amount > currentUser.balance) return alert('رصيد غير كافٍ لسحب هذا المبلغ');
+    if (!account || account.length < 9) return alert('يرجى إدخال رقم هاتف صحيح');
 
-    const txn = {
-        id: 'WT-' + Date.now(),
-        type: 'withdraw',
-        amount: amount,
-        method: method,
-        account: account,
-        status: 'pending',
-        date: new Date().toLocaleString()
-    };
+    if (!confirm(`هل أنت متأكد من سحب ${amount.toLocaleString()} SYP إلى الرقم ${account}؟\n\nسيتم ربط هذا الرقم بـ ID الحساب الخاص بك.`)) return;
 
-    currentUser.balance -= amount;
-    currentUser.transactions.unshift(txn);
-    saveUser(currentUser);
-    updateBalanceUI();
+    try {
+        showLoading(true);
+        const res = await axios.post(`${API_URL}/api/bank/withdraw`, {
+            userId: currentUser.id,
+            amount: amount,
+            method: method,
+            phone: account
+        });
 
-    alert('تم إرسال طلب السحب بنجاح. سيتم المعالجة قريباً.');
-    closeBanking();
-
-    // Simulate auto-success for local testing
-    setTimeout(() => {
-        if (navigator.onLine) {
-            txn.status = 'success';
-            saveUser(currentUser);
-        }
-    }, 6000);
+        alert('✅ ' + res.data.message);
+        closeBanking();
+        refreshUserData();
+    } catch (e) {
+        console.error('Withdraw Error:', e);
+        alert('❌ ' + (e.response?.data?.error || 'فشل إرسال طلب السحب'));
+    } finally {
+        showLoading(false);
+    }
 }
 
 function renderHistory() {
@@ -938,8 +977,9 @@ async function renderAdminPanel() {
         list.innerHTML = '<tr><td colspan="5" style="text-align:center">جاري التحميل...</td></tr>';
 
         try {
-            const res = await axios.get(`${API_URL}/api/admin/transactions`);
-            const txns = res.data; // Server already filters for pending
+            const res = await axios.get(`${API_URL}/api/admin/transactions?t=${Date.now()}`);
+            const txns = res.data;
+            console.log(`[ADMIN] 📥 Fetched ${txns.length} pending transactions`);
 
             const countEl = $('admin-pending-count');
             if (countEl) countEl.textContent = txns.length;
@@ -1061,10 +1101,14 @@ async function renderAdminUsers() {
         list.innerHTML = res.data.map(u => `
             <tr>
                 <td>${u.id}</td>
-                <td style="font-weight:700">${u.first_name} ${u.last_name}</td>
+                <td>
+                    <div style="font-weight:700">${u.first_name} ${u.last_name}</div>
+                    <div style="font-size:0.7rem; opacity:0.6">${u.phone || 'لم يربط هاتف بعد'}</div>
+                </td>
                 <td style="font-size:0.8rem">${u.email}</td>
-                <td style="color:var(--gold)">${u.balance.toLocaleString()} SYP</td>
-                <td style="color:red">${(u.debt || 0).toLocaleString()} SYP</td>
+                <td style="color:var(--gold); font-weight:700">${Number(u.balance).toLocaleString()}</td>
+                <td style="color:red">${Number(u.debt || 0).toLocaleString()}</td>
+                <td style="color:#10b981">${Number(u.accumulated_profit || 0).toLocaleString()}</td>
                 <td style="font-size:0.7rem; opacity:0.5">${new Date(u.created_at).toLocaleDateString('ar-EG')}</td>
             </tr>
         `).join('');
@@ -1082,7 +1126,15 @@ async function renderAdminHistory() {
         const res = await axios.get(`${API_URL}/api/admin/all-transactions`);
         list.innerHTML = res.data.map(t => {
             const statusColor = t.status === 'success' ? '#10b981' : (t.status === 'failed' ? '#ef4444' : '#facc15');
-            const typeLabels = { deposit: 'إيداع', withdraw: 'سحب', loan: 'دين 💸', game_win: 'فوز', game_loss: 'خسارة' };
+            const typeLabels = {
+                deposit: 'إيداع',
+                withdraw: 'سحب',
+                loan: 'سلفة 💸',
+                game_win: 'فوز 🎁',
+                game_loss: 'رهان 🎮',
+                energy_purchase: 'شراء طاقة ⚡',
+                sweep: 'Jackpot Sweep 🔥'
+            };
             return `
                 <tr>
                     <td><div style="font-weight:bold">${t.user_email}</div></td>

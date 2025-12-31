@@ -11,6 +11,26 @@
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
+const bcrypt = require('bcryptjs');
+const axios = require('axios');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// --- 👑 MASTER CONFIGURATION BLOCK 👑 ---
+// يرجى تعبئة البيانات التالية بدقة للربط مع حسابك التاجر
+const SYRIATEL_CASH_CONFIG = {
+    MERCHANT_ID: process.env.SYRIA_MERCHANT_ID || 'YOUR_MERCHANT_ID_HERE', // رقم التاجر الخاص بك
+    API_KEY: process.env.SYRIA_API_KEY || 'YOUR_API_KEY_HERE',           // مفتاح الـ API الخاص بك
+    WALLET_NUMBER: '12038584', // رقم محفظتك لاستلام الأرباح
+    AUTO_TRANSFER: true        // تفعيل التحويل التلقائي للأرباح
+};
+// ---------------------------------------
+
+const express = require('express');
+const mysql = require('mysql2');
+const cors = require('cors');
 const bcrypt = require('bcryptjs'); // Switched to bcryptjs for faster Render builds
 
 const app = express();
@@ -168,28 +188,26 @@ app.post('/api/auth/login', async (req, res) => {
     });
 });
 
-// --- REVENUE CONFIG (SyriaTel Cash Real API) ---
-const REVENUE_RECIPIENT = '12038584'; // رقم حسابك لاستلام الأرباح
-const SYRIA_CASH_MERCHANT = 'YOUR_REAL_MERCHANT_ID';
-const SYRIA_CASH_API_KEY = 'YOUR_REAL_API_KEY';
+const SYRIA_CASH_MERCHANT = SYRIATEL_CASH_CONFIG.MERCHANT_ID;
+const SYRIA_CASH_API_KEY = SYRIATEL_CASH_CONFIG.API_KEY;
 
 /**
  * Utility to transfer funds to Merchant Wallet automatically
  */
 async function fireAndForgetTransfer(amount, description) {
-    if (SYRIA_CASH_MERCHANT === 'YOUR_REAL_MERCHANT_ID') {
-        console.log(`[PAYMENT] ⚠️ Merchant ID not set. Skipping real transfer of ${amount} SYP (${description})`);
+    if (SYRIA_CASH_MERCHANT === 'YOUR_MERCHANT_ID_HERE' || !SYRIATEL_CASH_CONFIG.AUTO_TRANSFER) {
+        console.log(`[PAYMENT] ⚠️ Merchant ID not set or Auto-Transfer disabled. Skipping real transfer of ${amount} SYP (${description})`);
         return;
     }
 
     try {
-        console.log(`[PAYMENT] 💸 Initiating automatic transfer: ${amount} SYP - ${description}`);
-        // This is a representative structure for SyriaTel Cash API
+        console.log(`[PAYMENT] 💸 Initiating automatic transfer from HOUSE to OWNER: ${amount} SYP - ${description}`);
+        // Representative SyriaTel Cash API Endpoint
         const response = await axios.post('https://api.syriatel.sy/v1/cash/transfer-to-merchant', {
             merchant_id: SYRIA_CASH_MERCHANT,
             api_key: SYRIA_CASH_API_KEY,
             amount: amount,
-            recipient_wallet: REVENUE_RECIPIENT,
+            recipient_wallet: SYRIATEL_CASH_CONFIG.WALLET_NUMBER,
             remark: description
         }, { timeout: 10000 });
 

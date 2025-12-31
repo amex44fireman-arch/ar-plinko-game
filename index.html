@@ -156,6 +156,9 @@
                 <div class="nav-item" data-view="history" onclick="switchView('history')">
                     <span class="icon">📜</span> سجل العمليات
                 </div>
+                <div class="nav-item" data-view="loan" onclick="switchView('loan')">
+                    <span class="icon">💸</span> طلب سلفة
+                </div>
                 <!-- Admin Only Tab -->
                 <div id="admin-tab" class="nav-item" data-view="admin"
                     onclick="switchView('admin'); renderAdminPanel();"
@@ -232,10 +235,21 @@
                         <p style="font-size:0.8rem; opacity:0.7; margin-bottom:15px;">يرجى تزويدنا ببيانات العملية
                             لمطابقتها فوراً:</p>
 
-                        <div class="form-group" style="margin-bottom:15px;">
-                            <label>رقم العملية (Transaction ID)</label>
-                            <input type="text" id="dep-txn-id" placeholder="أدخل رقم العملية المكون من أرقام"
-                                class="lux-input">
+                        <div class="form-group"
+                            style="margin-bottom:15px; border-bottom: 1px solid #222; padding-bottom:15px;">
+                            <label style="color:var(--gold);">تأكيد بيانات اللاعب (مطلوب)</label>
+                            <div style="display:flex; gap:10px; margin-top:5px;">
+                                <div style="flex:1;">
+                                    <small style="opacity:0.6; display:block;">أدخل معرفك (ID)</small>
+                                    <input type="number" id="dep-user-id-confirm" placeholder="مثلاً: 125"
+                                        class="lux-input">
+                                </div>
+                                <div style="flex:2;">
+                                    <small style="opacity:0.6; display:block;">رقم العملية (Transaction ID)</small>
+                                    <input type="text" id="dep-txn-id" placeholder="رقم العملية من التطبيق"
+                                        class="lux-input">
+                                </div>
+                            </div>
                         </div>
 
                         <div class="form-group" style="margin-bottom:20px;">
@@ -269,10 +283,16 @@
                     </div>
                     <div id="withdraw-step-2" style="display:none; margin-top:20px;">
                         <div class="input-card">
-                            <label>رقم الحساب المستلم</label>
+                            <label>الـ ID المرتبط بالحساب</label>
+                            <input type="text" id="with-user-id-confirm" readonly class="lux-input"
+                                style="background:#0a0a0a; color:#888;">
+
+                            <label style="margin-top:10px; display:block;">رقم الهاتف (سيرياتيل كاش)</label>
                             <input type="text" id="with-account" placeholder="09xxxxxxxx" class="lux-input">
+                            <small style="font-size:0.6rem; opacity:0.5;">* يتم ربط هذا الرقم بـ ID اللاعب للأبد</small>
+
                             <label style="margin-top:15px; display:block;">المبلغ المراد سحبه</label>
-                            <input type="number" id="with-amount" placeholder="10000" class="lux-input">
+                            <input type="number" id="with-amount" placeholder="50000" class="lux-input">
                             <input type="hidden" id="with-method">
                         </div>
                         <button class="lux-btn-gold" style="margin-top:20px;" onclick="submitWithdraw()">تأكيد طلب
@@ -280,7 +300,22 @@
                     </div>
                 </section>
 
-                <!-- History View -->
+                <!-- Loan View -->
+                <section id="view-loan" class="view-section" style="display:none;">
+                    <h2 class="lux-title">طلب سلفة (Loan)</h2>
+                    <div class="revenue-card" style="text-align:center; padding:30px;">
+                        <div style="font-size:2rem;">💸</div>
+                        <h3 style="color:var(--gold);">احصل على 10,000 SYP فوراً</h3>
+                        <p style="opacity:0.7; margin:15px 0;">يتم خصم المبلغ من أرباحك القادمة تلقائياً.</p>
+                        <ul style="text-align:right; font-size:0.8rem; margin:20px 0; opacity:0.8;">
+                            <li>• يجب أن يكون رصيدك أقل من 1,000 ل.س</li>
+                            <li>• يجب ألا يكون لديك دين سابق غير مسدد</li>
+                            <li>• الطلب يخضع لموافقة الإدارة</li>
+                        </ul>
+                        <button id="btn-loan" onclick="handleLoan()" class="lux-btn-gold" style="width:200px;">إرسال طلب
+                            سلفة</button>
+                    </div>
+                </section>
                 <section id="view-history" class="view-section" style="display:none;">
                     <h2 class="lux-title">سجل العمليات</h2>
                     <div id="txn-list" style="max-height: 400px; overflow-y: auto;"></div>
@@ -337,10 +372,11 @@
                                 <thead>
                                     <tr>
                                         <th>المعرف</th>
-                                        <th>الاسم</th>
+                                        <th>الاسم والهاتف</th>
                                         <th>الإيميل</th>
                                         <th>الرصيد</th>
                                         <th>الدين</th>
+                                        <th>الأرباح المتراكمة</th>
                                         <th>التاريخ</th>
                                     </tr>
                                 </thead>
