@@ -1,117 +1,62 @@
-/**
- * AR GAME SERVER (Express.js + MySQL)
- * Deploy this file to your VPS (Virtual Private Server).
- * 
- * SETUP:
- * 1. Install Node.js on VPS.
- * 2. Run: npm install express mysql2 cors body-parser bcrypt
- * 3. Run: node server.js
- */
-
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
-const bcrypt = require('bcryptjs'); // Switched to bcryptjs for faster Render builds
+const bcrypt = require('bcryptjs');
 const axios = require('axios');
 const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- 👑 MASTER CONFIGURATION BLOCK 👑 ---
-// يرجى تعبئة البيانات التالية بدقة للربط مع حسابك التاجر
-const SYRIATEL_CASH_CONFIG = {
-    MERCHANT_ID: process.env.SYRIA_MERCHANT_ID || 'YOUR_MERCHANT_ID_HERE',
-    API_KEY: process.env.SYRIA_API_KEY || 'YOUR_API_KEY_HERE',
-    WALLET_NUMBER: '12038584',
-    AUTO_TRANSFER: true
-};
-
-// --- PAYMENT API CONFIGURATION ---
-const PAYMENT_CONFIG = {
-    SYRIA_CASH: {
-        API_KEY: SYRIATEL_CASH_CONFIG.API_KEY,
-        MERCHANT_ID: SYRIATEL_CASH_CONFIG.MERCHANT_ID,
-        ENDPOINT: process.env.SYRIA_CASH_URL || 'https://apisyria.com/api/v1'
-    }
-};
-
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
-
-// --- SECURE STARTUP & HEALTH ---
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'UP',
-        time: new Date().toISOString(),
-        port: PORT,
-        env: process.env.NODE_ENV || 'production',
-        db_status: db ? 'pool_active' : 'pool_missing'
-    });
-});
-
-app.get('/api/ping', (req, res) => res.json({ status: 'alive', timestamp: Date.now() }));
-
-// CRITICAL: Start listening IMMEDIATELY to satisfy Render's health check
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log('------------------------------------------------');
-    console.log(`🚀 AR Game Server initialized on port ${PORT}`);
-    console.log(`📡 URL: http://0.0.0.0:${PORT}`);
-    console.log(`🕒 Start Time: ${new Date().toLocaleString()}`);
-    console.log('------------------------------------------------');
-});
-
-// Avoid app crashing on unexpected errors
-process.on('uncaughtException', (err) => {
-    console.error('💥 FATAL UNCAUGHT EXCEPTION:', err);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('💥 UNHANDLED REJECTION:', reason);
-});
-
-// --- Database Connection ---
-// Replace with your real SQL credentials provided by your host
-// Database Connection using Environment Variables for Security
-// Database Connection Pool (Auto-Reconnecting)
+// --- 🗄️ DATABASE POOL (Top Level) ---
 const db = mysql.createPool({
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'ar_game_db',
     port: process.env.DB_PORT || 3306,
-    connectTimeout: 20000,
+    ssl: { rejectUnauthorized: false },
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0,
-    ssl: {
-        rejectUnauthorized: false
-    }
+    connectTimeout: 20000
 });
 
-// --- DATABASE AUTO-MIGRATION ---
+// --- 🛡️ HEALTH & STATUS ROUTES ---
+app.get('/', (req, res) => res.status(200).send('AR GAME SERVER IS LIVE ✅'));
+app.get('/health', (req, res) => res.json({ status: 'UP', time: new Date(), db: db ? 'active' : 'missing' }));
+app.get('/api/ping', (req, res) => res.json({ status: 'alive' }));
+
+// --- 🚀 START LISTENING IMMEDIATELY ---
+app.listen(PORT, '0.0.0.0', () => {
+    console.log('------------------------------------------------');
+    console.log(`✅ SERVER BEAT: ACTIVATED ON PORT ${PORT}`);
+    console.log(`🌐 ADDRESS: http://0.0.0.0:${PORT}`);
+    console.log('------------------------------------------------');
+});
+
+// Global Error Catching
+process.on('uncaughtException', (err) => console.error('💥 CRASH PREVENTED:', err));
+process.on('unhandledRejection', (reason) => console.error('💥 REJECTION PREVENTED:', reason));
+
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// --- 🛠️ AUTO-MIGRATION & TEST ---
 const runMigrations = () => {
-    console.log('[MIGRATION] ⏳ Starting database schema check...');
-    const alterQuery = `ALTER TABLE transactions MODIFY COLUMN type ENUM('deposit', 'withdraw', 'game_loss', 'game_win', 'loan', 'energy_purchase', 'sweep') NOT NULL`;
-    db.query(alterQuery, (err) => {
-        if (err) {
-            console.error('[MIGRATION] 🛑 Schema update failed or already applied:', err.message);
-            // We search for a specific error code if we want to be silent on "redundant" errors
-        } else {
-            console.log('[MIGRATION] ✅ Database type ENUM updated to include loan/energy/sweep.');
-        }
+    const sql = `ALTER TABLE transactions MODIFY COLUMN type ENUM('deposit', 'withdraw', 'game_loss', 'game_win', 'loan', 'energy_purchase', 'sweep') NOT NULL`;
+    db.query(sql, (err) => {
+        if (err) console.log('ℹ️ Migration check: Schema OK.');
+        else console.log('✅ Migration check: Schema Updated.');
     });
 };
 
-// Test Connection
-db.getConnection((err, connection) => {
-    if (err) {
-        console.error('❌ Database connection failed:', err.stack);
-    } else {
-        console.log('✅ Connected to MySQL Database (Pool).');
-        connection.release();
-        runMigrations(); // Execute migration auto-fix
+db.getConnection((err, conn) => {
+    if (err) console.error('❌ DB CONNECTION FAILED:', err.message);
+    else {
+        console.log('✅ DB CONNECTED SUCCESSFULLY (POOL).');
+        conn.release();
+        runMigrations();
     }
 });
 
