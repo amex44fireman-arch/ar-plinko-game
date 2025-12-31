@@ -57,13 +57,14 @@ const db = mysql.createPool({
 
 // --- DATABASE AUTO-MIGRATION ---
 const runMigrations = () => {
-    console.log('[DB] ⏳ Verifying database schema...');
+    console.log('[MIGRATION] ⏳ Starting database schema check...');
     const alterQuery = `ALTER TABLE transactions MODIFY COLUMN type ENUM('deposit', 'withdraw', 'game_loss', 'game_win', 'loan', 'energy_purchase', 'sweep') NOT NULL`;
     db.query(alterQuery, (err) => {
         if (err) {
-            console.log('[DB] ℹ️ Schema notice:', err.message);
+            console.error('[MIGRATION] 🛑 Schema update failed or already applied:', err.message);
+            // We search for a specific error code if we want to be silent on "redundant" errors
         } else {
-            console.log('[DB] ✅ Database schema updated successfully!');
+            console.log('[MIGRATION] ✅ Database type ENUM updated to include loan/energy/sweep.');
         }
     });
 };

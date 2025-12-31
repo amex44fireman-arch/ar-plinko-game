@@ -921,7 +921,7 @@ function switchAdminSubView(view) {
     $(`admin-${view}-view`).style.display = 'block';
 
     document.querySelectorAll('.sub-nav-btn').forEach(btn => {
-        const isActive = btn.textContent.includes(view === 'pending' ? 'معقلة' : (view === 'users' ? 'اللاعبين' : (view === 'history' ? 'العمليات' : 'أرباحي')));
+        const isActive = btn.textContent.includes(view === 'pending' ? 'معلقة' : (view === 'users' ? 'اللاعبين' : (view === 'history' ? 'العمليات' : 'أرباحي')));
         btn.classList.toggle('active', isActive);
     });
 
@@ -972,7 +972,9 @@ async function renderAdminPanel() {
                 </tr>
             `).join('');
         } catch (e) {
-            list.innerHTML = '<tr><td colspan="5" style="color:red; text-align:center">خطأ في الاتصال</td></tr>';
+            console.error('Admin Panel Fetch Error:', e);
+            const errorMsg = e.response?.data?.error || e.message || 'خطأ غير معروف';
+            list.innerHTML = `<tr><td colspan="5" style="color:red; text-align:center">❌ فشل الاتصال بالسيرفر: ${errorMsg}</td></tr>`;
         }
     } else if (currentAdminSubView === 'users') {
         renderAdminUsers();
