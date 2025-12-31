@@ -55,8 +55,11 @@ app.get('/api/ping', (req, res) => res.json({ status: 'alive', timestamp: Date.n
 
 // CRITICAL: Start listening IMMEDIATELY to satisfy Render's health check
 const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log('------------------------------------------------');
     console.log(`🚀 AR Game Server initialized on port ${PORT}`);
     console.log(`📡 URL: http://0.0.0.0:${PORT}`);
+    console.log(`🕒 Start Time: ${new Date().toLocaleString()}`);
+    console.log('------------------------------------------------');
 });
 
 // Avoid app crashing on unexpected errors

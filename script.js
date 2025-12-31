@@ -121,27 +121,36 @@ function init() {
     }
 
     // Ping Server
-    console.log('📡 Connecting to:', API_URL);
-    axios.get(`${API_URL}/api/ping`, { timeout: 60000 })
+    console.log('📡 [NETWORK] Connecting to:', API_URL);
+    axios.get(`${API_URL}/api/ping`, { timeout: 30000 }) // 30s timeout for Render Cold Start
         .then(() => {
-            console.log('✅ Server Online');
+            console.log('✅ [NETWORK] Server Online & Connected');
         })
         .catch(err => {
-            console.error('❌ Server Connection Error:', err);
+            console.error('❌ [NETWORK] Connection Error:', err.message);
 
-            // If the custom URL failed, try resetting to production automatically once
+            // diagnostic log for user
+            console.log('%c DIAGNOSTIC INFO:', 'color: orange; font-weight: bold;');
+            console.log('URL Attempted:', API_URL);
+            console.log('Error Details:', err);
+
+            // AUTO-FALLBACK
             if (API_URL !== PRODUCTION_API_URL) {
-                console.warn('⚠️ Custom API failed, attempting fallback to Production...');
+                console.warn('⚠️ [NETWORK] Custom URL failed. Reverting to:', PRODUCTION_API_URL);
                 API_URL = PRODUCTION_API_URL;
-                // Don't save to localStorage yet, just try this session
-                init(); // Re-run init
+                localStorage.setItem('ar_api_url', PRODUCTION_API_URL);
+                init(); // Retry with production
                 return;
             }
 
-            console.error('❌ All connection attempts failed.');
             // Only alert if we aren't in the middle of a configuration reload
             if (!sessionStorage.getItem('configuring')) {
-                alert('⚠️ عذراً، لا يمكن الاتصال بالسيرفر حالياً.\n\nتأكد من:\n1. اتصال الإنترنت.\n2. صحة الرابط (إذا غيرته يدوياً).\n\nسنحاول الاستمرار بالوضع التجريبي (Demo) مؤقتاً.');
+                const fix = confirm('⚠️ عذراً، لا يمكن الاتصال بالسيرفر حالياً.\n\nهل تريد محاولة إعادة ضبط الرابط للمصنع (Reset URL)؟');
+                if (fix) {
+                    localStorage.setItem('ar_api_url', PRODUCTION_API_URL);
+                    location.reload();
+                    return;
+                }
             }
             sessionStorage.removeItem('configuring');
         });
