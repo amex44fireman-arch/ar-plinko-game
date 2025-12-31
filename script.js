@@ -13,7 +13,12 @@ if (typeof axios !== 'undefined') axios.defaults.timeout = 60000;
 // HARDCODED API URL - Users will connect to this automatically
 const PRODUCTION_API_URL = 'https://ar-plinko-game-x8pc.onrender.com'; // ⚠️ REPLACE WITH YOUR ACTUAL RENDER URL
 
-const getSavedAPI = () => localStorage.getItem('ar_api_url') || PRODUCTION_API_URL;
+// Fallback to Production if localStorage URL fails
+const getSavedAPI = () => {
+    const saved = localStorage.getItem('ar_api_url');
+    // If we have a saved URL, we use it, but we can reset if needed.
+    return (saved && saved.startsWith('http')) ? saved : PRODUCTION_API_URL;
+};
 let API_URL = getSavedAPI();
 
 function configServer() {
@@ -116,19 +121,29 @@ function init() {
     }
 
     // Ping Server
+    console.log('📡 Connecting to:', API_URL);
     axios.get(`${API_URL}/api/ping`, { timeout: 60000 })
         .then(() => {
             console.log('✅ Server Online');
-            // Server is ready
         })
         .catch(err => {
-            console.error('❌ Server Offline:', err);
-            let msg = 'فشل الاتصال بالسيرفر.\n';
-            if (err.code === 'ERR_NETWORK') msg += 'يرجى المحاولة لاحقاً أو التواصل مع الدعم الفني.';
-            else msg += `رمز الخطأ: ${err.message}`;
+            console.error('❌ Server Connection Error:', err);
 
-            alert(msg);
-            // Config option removed for regular users - only admin can access via logo clicks
+            // If the custom URL failed, try resetting to production automatically once
+            if (API_URL !== PRODUCTION_API_URL) {
+                console.warn('⚠️ Custom API failed, attempting fallback to Production...');
+                API_URL = PRODUCTION_API_URL;
+                // Don't save to localStorage yet, just try this session
+                init(); // Re-run init
+                return;
+            }
+
+            console.error('❌ All connection attempts failed.');
+            // Only alert if we aren't in the middle of a configuration reload
+            if (!sessionStorage.getItem('configuring')) {
+                alert('⚠️ عذراً، لا يمكن الاتصال بالسيرفر حالياً.\n\nتأكد من:\n1. اتصال الإنترنت.\n2. صحة الرابط (إذا غيرته يدوياً).\n\nسنحاول الاستمرار بالوضع التجريبي (Demo) مؤقتاً.');
+            }
+            sessionStorage.removeItem('configuring');
         });
 
     const safeClick = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
@@ -990,8 +1005,8 @@ async function renderAdminRevenue(pin) {
             const rev = res.data.revenue;
             $('rev-total').textContent = rev.total.toLocaleString() + ' SYP';
             $('rev-losses').textContent = rev.game_losses.toLocaleString() + ' SYP';
+            $('rev-wins').textContent = rev.game_wins.toLocaleString() + ' SYP';
             $('rev-energy').textContent = rev.energy_sales.toLocaleString() + ' SYP';
-            $('rev-net').textContent = rev.net_profit.toLocaleString() + ' SYP';
             $('rev-deposits').textContent = rev.total_deposits.toLocaleString() + ' SYP';
             $('rev-withdrawals').textContent = rev.total_withdrawals.toLocaleString() + ' SYP';
             $('rev-loans').textContent = rev.active_loans.toLocaleString() + ' SYP';
@@ -1001,8 +1016,36 @@ async function renderAdminRevenue(pin) {
             alert('❌ رمز PIN غير صحيح');
             $('revenue-pin-input').value = '';
         } else {
-            alert('❌ فشل جلب بيانات الأرباح');
+            alert('❌ فشل جلب بيانات الأرباح: ' + (e.response?.data?.error || e.message));
         }
+    }
+}
+
+function showEnergyStore() {
+    $('energy-store-modal').style.display = 'flex';
+}
+
+async function buyEnergy(packageId) {
+    if (!confirm('هل تريد شراء هذه الحزمة باستخدام رصيدك في اللعبة؟')) return;
+
+    try {
+        const res = await axios.post(`${API_URL}/api/bank/buy-energy`, {
+            userId: currentUser.id,
+            packageId: packageId
+        });
+
+        if (res.data.success) {
+            alert('✅ ' + res.data.message);
+            currentUser.energy = res.data.newEnergy;
+            updateEnergyUI();
+            updateBalanceUI(); // Balance decreased
+            $('energy-store-modal').style.display = 'none';
+
+            // Refresh User Data
+            initUserSession(currentUser.email);
+        }
+    } catch (e) {
+        alert(e.response?.data?.error || 'فشل عملية الشراء');
     }
 }
 
