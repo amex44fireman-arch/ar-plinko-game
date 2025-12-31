@@ -125,6 +125,8 @@ function init() {
     axios.get(`${API_URL}/api/ping`, { timeout: 30000 }) // 30s timeout for Render Cold Start
         .then(() => {
             console.log('✅ [NETWORK] Server Online & Connected');
+            const overlay = $('offline-overlay');
+            if (overlay) overlay.style.display = 'none';
         })
         .catch(err => {
             console.error('❌ [NETWORK] Connection Error:', err.message);
@@ -143,13 +145,25 @@ function init() {
                 return;
             }
 
-            // Only alert if we aren't in the middle of a configuration reload
-            if (!sessionStorage.getItem('configuring')) {
-                const fix = confirm('⚠️ عذراً، لا يمكن الاتصال بالسيرفر حالياً.\n\nهل تريد محاولة إعادة ضبط الرابط للمصنع (Reset URL)؟');
-                if (fix) {
-                    localStorage.setItem('ar_api_url', PRODUCTION_API_URL);
-                    location.reload();
-                    return;
+            // SHOW DIAGNOSTIC OVERLAY
+            const overlay = $('offline-overlay');
+            if (overlay) {
+                overlay.style.display = 'flex';
+                const title = $('offline-title');
+                const msg = $('offline-msg');
+                if (title) title.textContent = '⚠️ عذراً، لا يمكن الاتصال بالسيرفر';
+                if (msg) msg.textContent = 'السيرفر لا يستجيب حالياً أو أن الرابط غير صحيح.';
+
+                const retryMsg = $('offline-retry-msg');
+                if (retryMsg) retryMsg.style.display = 'none';
+
+                const diagBox = $('diagnostic-box');
+                if (diagBox) {
+                    diagBox.style.display = 'block';
+                    const dUrl = $('diag-url');
+                    const dErr = $('diag-error');
+                    if (dUrl) dUrl.textContent = `URL: ${API_URL}`;
+                    if (dErr) dErr.textContent = `Error: ${err.message || 'Network Error'}`;
                 }
             }
             sessionStorage.removeItem('configuring');

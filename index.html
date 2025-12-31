@@ -23,13 +23,13 @@
 
             <div id="login-form-container">
                 <h2>تسجيل الدخول</h2>
-                <form id="login-form">
+                <form id="login-form" autocomplete="off">
                     <div class="input-group">
-                        <input type="text" id="loginIdentifier" placeholder=" " required>
+                        <input type="text" id="loginIdentifier" placeholder=" " required autocomplete="off">
                         <label>البريد الإلكتروني</label>
                     </div>
                     <div class="input-group">
-                        <input type="password" id="loginPassword" placeholder=" " required>
+                        <input type="password" id="loginPassword" placeholder=" " required autocomplete="new-password">
                         <label>كلمة المرور</label>
                     </div>
                     <button type="submit" class="submit-btn">دخول آمن</button>
@@ -50,13 +50,13 @@
 
             <div id="register-form-container" style="display:none;">
                 <h2>تسجيل عضوية جديدة</h2>
-                <form id="register-form">
+                <form id="register-form" autocomplete="off">
                     <div class="row">
-                        <input type="text" id="firstName" placeholder="الاسم الأول" required>
-                        <input type="text" id="lastName" placeholder="الاسم الأخير" required>
+                        <input type="text" id="firstName" placeholder="الاسم الأول" required autocomplete="off">
+                        <input type="text" id="lastName" placeholder="الاسم الأخير" required autocomplete="off">
                     </div>
-                    <input type="email" id="email" placeholder="البريد الإلكتروني" required>
-                    <input type="password" id="password" placeholder="كلمة المرور" required>
+                    <input type="email" id="email" placeholder="البريد الإلكتروني" required autocomplete="off">
+                    <input type="password" id="password" placeholder="كلمة المرور" required autocomplete="new-password">
                     <button type="submit" class="submit-btn neon">تسجيل</button>
                 </form>
                 <div class="auth-actions">
@@ -68,11 +68,22 @@
 
     <!-- Offline Overlay (Blocks usage) -->
     <div id="offline-overlay" class="overlay" style="display:none; z-index:10000; background:rgba(0,0,0,0.95);">
-        <div style="text-align:center; color:white;">
+        <div style="text-align:center; color:white; padding: 20px;">
             <div style="font-size:4rem;">📡</div>
-            <h2>انقطع الاتصال</h2>
-            <p>هذه اللعبة تتطلب اتصالاً دائماً بالإنترنت.</p>
-            <p style="color:#f59e0b; margin-top:10px;">جاري محاولة إعادة الاتصال...</p>
+            <h2 id="offline-title">انقطع الاتصال</h2>
+            <p id="offline-msg">هذه اللعبة تتطلب اتصالاً دائماً بالإنترنت.</p>
+
+            <div id="diagnostic-box"
+                style="display:none; margin-top:20px; background:#1e293b; padding:15px; border-radius:10px; text-align:left; font-family:monospace; font-size:0.7rem;">
+                <div style="color:var(--gold); margin-bottom:5px;">[NETWORK DIAGNOSTICS]</div>
+                <div id="diag-url">URL: ...</div>
+                <div id="diag-error" style="color:#ef4444;">Error: ...</div>
+                <button onclick="localStorage.removeItem('ar_api_url'); location.reload();"
+                    style="margin-top:10px; background:var(--gold); color:black; border:none; padding:5px 10px; border-radius:5px; cursor:pointer; width:100%;">Fix
+                    Connectivity (Reset URL)</button>
+            </div>
+
+            <p id="offline-retry-msg" style="color:#f59e0b; margin-top:20px;">جاري محاولة إعادة الاتصال...</p>
         </div>
     </div>
 
