@@ -589,3 +589,4 @@ app.post('/api/admin/process', (req, res) => {
 });
 
 // Server start moved to top for Render stability
+
