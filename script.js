@@ -114,15 +114,26 @@ let pendingTxn = null;
 
 // --- Network Monitor ---
 const NetworkMonitor = {
+    isServerChecking: false, // Flag to prevent premature hiding
     init: () => {
-        window.addEventListener('online', NetworkMonitor.updateStatus);
-        window.addEventListener('offline', NetworkMonitor.updateStatus);
-        NetworkMonitor.updateStatus();
+        window.addEventListener('online', () => NetworkMonitor.updateStatus(true));
+        window.addEventListener('offline', () => NetworkMonitor.updateStatus(true));
+        NetworkMonitor.updateStatus(false); // Initial check
     },
-    updateStatus: () => {
+    updateStatus: (isEvent) => {
         const isOnline = navigator.onLine;
         const overlay = document.getElementById('offline-overlay');
-        if (overlay) overlay.style.display = isOnline ? 'none' : 'flex';
+        if (!overlay) return;
+
+        if (!isOnline) {
+            // Browser says offline - definitely show overlay
+            overlay.style.display = 'flex';
+            const title = $('offline-title');
+            if (title) title.textContent = '🌐 لا يوجد اتصال بالإنترنت';
+        } else if (isEvent && !NetworkMonitor.isServerChecking) {
+            // Only hide on 'online' event if we aren't currently waiting for a server ping
+            overlay.style.display = 'none';
+        }
     },
     checkQuery: () => {
         if (!navigator.onLine) {
@@ -135,6 +146,7 @@ const NetworkMonitor = {
 
 // --- Initialization ---
 async function init() {
+    NetworkMonitor.isServerChecking = true; // Lock immediately
     NetworkMonitor.init();
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('service-worker.js').catch(() => { });
@@ -157,6 +169,8 @@ async function init() {
         if (diagBox) diagBox.style.display = 'none';
     }
 
+    NetworkMonitor.isServerChecking = true; // Lock the overlay
+
     let retryCount = 0;
     const attemptConnection = async () => {
         try {
@@ -165,14 +179,21 @@ async function init() {
 
             const pingRes = await axios.get(`${API_URL}/api/ping?t=${Date.now()}`, { timeout: 15000 });
             console.log('✅ [NETWORK] Server Ready!');
+
+            NetworkMonitor.isServerChecking = false; // Unlock
             if (overlay) overlay.style.display = 'none';
+
+            // Start Auth Logic only AFTER connection is 100% verified
+            checkAutoLogin();
         } catch (err) {
             retryCount++;
+            console.warn(`⚠️ [NETWORK] Attempt ${retryCount} failed.`, err.message);
             if (msg) msg.textContent = `جاري محاولة الاتصال (${retryCount}/10)... يرجى الانتظار حتى يستيقظ السيرفر.`;
 
             if (retryCount < 10) {
                 setTimeout(attemptConnection, 5000);
             } else {
+                NetworkMonitor.isServerChecking = false;
                 showDiagnosticError(err);
             }
         }
@@ -218,7 +239,6 @@ async function init() {
     });
 
     setupDepositListeners();
-    checkAutoLogin();
     initMultipliers();
 
     const logo = document.querySelector('.logo');
