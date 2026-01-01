@@ -235,7 +235,7 @@ async function doRegister(e) {
         const firstName = $('firstName').value;
         const lastName = $('lastName').value;
         const email = $('email').value;
-        const password = $('password').value;
+        const password = $('reg_secure_key').value;
 
         const res = await axios.post(`${API_URL}/api/auth/register`, { firstName, lastName, email, password });
         if (res.data.success) {
@@ -258,7 +258,7 @@ async function doLogin(e) {
     showLoading(true);
     try {
         const email = $('loginIdentifier').value;
-        const password = $('loginPassword').value;
+        const password = $('auth_secure_key').value;
 
         const res = await axios.post(`${API_URL}/api/auth/login`, { email, password });
         if (res.data.success) {

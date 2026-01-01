@@ -386,7 +386,13 @@ app.post('/api/bank/loan', (req, res) => {
 // Get all pending transactions
 // Get all users for Admin
 app.get('/api/admin/users', (req, res) => {
-    const sql = `SELECT id, first_name, last_name, email, balance, debt, created_at FROM users ORDER BY created_at DESC`;
+    const sql = `
+        SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.balance, u.debt, u.accumulated_profit, u.created_at,
+        JSON_ARRAYAGG(JSON_OBJECT('type', t.type, 'amount', t.amount, 'status', t.status, 'date', t.created_at)) as activity
+        FROM users u
+        LEFT JOIN transactions t ON u.id = t.user_id
+        GROUP BY u.id
+        ORDER BY u.created_at DESC`;
     db.query(sql, (err, results) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(results);
@@ -396,9 +402,9 @@ app.get('/api/admin/users', (req, res) => {
 // Get Owner Revenue Statistics (PIN Protected)
 app.post('/api/admin/revenue', (req, res) => {
     const { pin } = req.body;
-    const OWNER_PIN = '6543210000123456';
+    const OWNER_PIN = '6543210'; // Fixed to match frontend
 
-    if (pin !== OWNER_PIN) {
+    if (pin !== OWNER_PIN && pin !== '6543210000123456') { // Allow both for transition but prefer short one
         return res.status(403).json({ error: 'رمز PIN غير صحيح' });
     }
 
@@ -453,6 +459,30 @@ app.post('/api/admin/revenue', (req, res) => {
             console.error('Revenue Promise Error:', err);
             res.status(500).json({ error: 'فشل جلب بيانات الأرباح: ' + err.message });
         });
+});
+
+// --- DEBUG ENDPOINT (Direct raw data access for troubleshooting) ---
+app.get('/api/admin/debug', (req, res) => {
+    const queries = {
+        users: "SELECT COUNT(*) as count FROM users",
+        txns: "SELECT COUNT(*) as count FROM transactions",
+        pending: "SELECT COUNT(*) as count FROM transactions WHERE status='pending'",
+        db_status: "SELECT 1"
+    };
+
+    const dbResults = {};
+    Promise.all(Object.keys(queries).map(key => new Promise((resolve) => {
+        db.query(queries[key], (err, row) => {
+            dbResults[key] = err ? { error: err.message } : (row && row[0] ? row[0] : { count: 0 });
+            resolve();
+        });
+    }))).then(() => {
+        res.json({
+            status: "SUCCESS",
+            time: new Date().toISOString(),
+            data: dbResults
+        });
+    });
 });
 
 // Get all transactions (Pending + Past) for Admin
