@@ -20,7 +20,7 @@ async function resolveOptimalAPI() {
     // 1. User Priority: If the user manually set a URL, use it immediately
     const saved = localStorage.getItem('ar_api_url');
     if (saved && saved.startsWith('http')) {
-        console.log('👤 [USER] Using manual API URL:', saved);
+        console.log('%c 👤 [MANUAL MODE] Using user-defined API:', 'color: #ffd700; font-weight: bold;', saved);
         return saved;
     }
 
