@@ -16,9 +16,16 @@ let API_URL = PRODUCTION_API_URL;
 
 // Fallback to Production if localStorage URL fails
 async function resolveOptimalAPI() {
-    console.log('📡 [NETWORK] Optimization Started...');
+    // 1. User Priority: If the user manually set a URL, use it immediately
+    const saved = localStorage.getItem('ar_api_url');
+    if (saved && saved.startsWith('http')) {
+        console.log('👤 [USER] Using manual API URL:', saved);
+        return saved;
+    }
 
-    // 0. Atomic Fetch Test (Avoids Axios overhead/config issues)
+    console.log('📡 [NETWORK] Optimization Started (Auto-Mode)...');
+
+    // 2. Atomic Fetch Test (Avoids Axios overhead/config issues)
     const atomicPing = async (url) => {
         try {
             const r = await fetch(url + '/api/ping', { mode: 'cors', cache: 'no-cache' });
@@ -27,15 +34,11 @@ async function resolveOptimalAPI() {
         return false;
     };
 
-    // 1. Try parallel probes
+    // 3. Try parallel probes
     try {
         if (await atomicPing('')) return '';
         if (await atomicPing(PRODUCTION_API_URL)) return PRODUCTION_API_URL;
     } catch (e) { }
-
-    // 2. Fallback to saved
-    const saved = localStorage.getItem('ar_api_url');
-    if (saved && saved.startsWith('http')) return saved;
 
     return PRODUCTION_API_URL;
 }
