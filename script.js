@@ -145,22 +145,25 @@ function init() {
             // diagnostic log for user
             console.log('%c DIAGNOSTIC INFO:', 'color: orange; font-weight: bold;');
             console.log('URL Attempted:', API_URL);
-            console.log('Error Details:', err);
+            console.log('Error Type:', err.name);
+            console.log('Error Code:', err.code);
+            console.log('Error Status:', err.response?.status);
 
-            // AUTO-FALLBACK
-            if (API_URL !== PRODUCTION_API_URL) {
-                console.warn('⚠️ [NETWORK] Custom URL failed. Reverting to:', PRODUCTION_API_URL);
-                API_URL = PRODUCTION_API_URL;
-                localStorage.setItem('ar_api_url', PRODUCTION_API_URL);
-                init(); // Retry with production
-                return;
-            }
+            // DETECT FILE:// PROTOCOL
+            const isLocalFile = window.location.protocol === 'file:';
 
             // SHOW DIAGNOSTIC OVERLAY
             if (overlay) {
                 overlay.style.display = 'flex';
                 if (title) title.textContent = '⚠️ عذراً، لا يمكن الاتصال بالسيرفر';
-                if (msg) msg.textContent = 'السيرفر لا يستجيب حالياً أو أن الرابط غير صحيح.';
+
+                let errorContext = 'السيرفر لا يستجيب حالياً أو أن الرابط غير صحيح.';
+                if (isLocalFile) {
+                    errorContext = '❌ النظام لا يعمل عند تشغيله كملف (Double Click). يجب رفعه على استضافة (مثل Cloudflare) أو استخدامه عبر Local Server.';
+                } else if (err.message.includes('Network Error')) {
+                    errorContext = 'فشل في الاتصال (Network Error). قد يكون السبب حظر من المتصفح (CORS) أو مشكلة في شبكتك.';
+                }
+                if (msg) msg.textContent = errorContext;
 
                 const retryMsg = $('offline-retry-msg');
                 if (retryMsg) retryMsg.style.display = 'none';
@@ -170,7 +173,7 @@ function init() {
                     const dUrl = $('diag-url');
                     const dErr = $('diag-error');
                     if (dUrl) dUrl.textContent = `URL: ${API_URL}`;
-                    if (dErr) dErr.textContent = `Error: ${err.message || 'Network Error'}`;
+                    if (dErr) dErr.textContent = `Details: ${err.message} (Code: ${err.code || 'N/A'})`;
                 }
             }
         });

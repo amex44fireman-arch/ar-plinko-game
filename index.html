@@ -84,9 +84,13 @@
                 <div style="color:var(--gold); margin-bottom:5px;">[NETWORK DIAGNOSTICS]</div>
                 <div id="diag-url">URL: ...</div>
                 <div id="diag-error" style="color:#ef4444;">Error: ...</div>
-                <button onclick="localStorage.removeItem('ar_api_url'); location.reload();"
-                    style="margin-top:10px; background:var(--gold); color:black; border:none; padding:5px 10px; border-radius:5px; cursor:pointer; width:100%;">Fix
-                    Connectivity (Reset URL)</button>
+                <button
+                    onclick="localStorage.setItem('ar_api_url', 'https://ar-plinko-game-x8pc.onrender.com'); location.reload();"
+                    style="margin-top:10px; background:var(--gold); color:black; border:none; padding:8px; border-radius:5px; cursor:pointer; width:100%; font-weight:bold;">🔄
+                    إعادة الاتصال بالسيرفر الرسمي (Fix Now)</button>
+                <button onclick="localStorage.clear(); location.reload();"
+                    style="margin-top:5px; background:#444; color:white; border:none; padding:5px; border-radius:5px; cursor:pointer; width:100%; font-size:0.7rem;">تصفير
+                    شامل للبيانات (Deep Reset)</button>
             </div>
 
             <p id="offline-retry-msg" style="color:#f59e0b; margin-top:20px;">جاري محاولة إعادة الاتصال...</p>
