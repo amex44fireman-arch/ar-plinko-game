@@ -175,10 +175,21 @@ async function init() {
     let retryCount = 0;
     const attemptConnection = async () => {
         try {
+            // Show diagnostic box earlier (after 2 fails) to give user control
+            if (retryCount >= 2 && diagBox) {
+                diagBox.style.display = 'block';
+            }
+
             API_URL = await resolveOptimalAPI();
             console.log('📡 [NETWORK] Attempting Target:', API_URL || '(Native Proxy)');
 
-            const pingRes = await axios.get(`${API_URL}/api/ping?t=${Date.now()}`, { timeout: 15000 });
+            // Atomic Wake-up call (bypasses some browser cache/check logic)
+            fetch(`${API_URL}/api/ping`, { mode: 'no-cors' }).catch(() => { });
+
+            const pingRes = await axios.get(`${API_URL}/api/ping?v=${Date.now()}`, {
+                timeout: 10000,
+                headers: { 'Cache-Control': 'no-cache' }
+            });
             console.log('✅ [NETWORK] Server Ready!');
 
             NetworkMonitor.isServerChecking = false; // Unlock
@@ -189,10 +200,16 @@ async function init() {
         } catch (err) {
             retryCount++;
             console.warn(`⚠️ [NETWORK] Attempt ${retryCount} failed.`, err.message);
-            if (msg) msg.textContent = `جاري محاولة الاتصال (${retryCount}/10)... يرجى الانتظار حتى يستيقظ السيرفر.`;
+
+            // Helpful messages based on retry count
+            if (retryCount === 1) msg.textContent = 'السيرفر يغفو حالياً... جاري إيقاظه ☕';
+            if (retryCount === 3) msg.textContent = 'تأخر السيرفر قليلاً، جاري المحاولة بشكل أقوى 💪';
+            if (retryCount > 5) msg.textContent = `محاولة رقم ${retryCount}... يرجى التحقق من VPN إذا طال الانتظار.`;
 
             if (retryCount < 10) {
-                setTimeout(attemptConnection, 5000);
+                // Faster retries early on to wake up faster
+                const delay = retryCount < 3 ? 3000 : 5000;
+                setTimeout(attemptConnection, delay);
             } else {
                 NetworkMonitor.isServerChecking = false;
                 showDiagnosticError(err);

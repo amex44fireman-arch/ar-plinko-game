@@ -79,29 +79,31 @@
         <h2 id="offline-title">انقطع الاتصال</h2>
         <p id="offline-msg">هذه اللعبة تتطلب اتصالاً دائماً بالإنترنت.</p>
 
+        <div
+            style="margin-top:20px; text-align:center; background:rgba(0,0,0,0.4); padding:15px; border-radius:10px; border:1px solid #444;">
+            <p style="margin-bottom:10px; color:#fff;">⚠️ إذا استمر الانتظار لأكثر من دقيقتين:</p>
+            <a href="https://ar-plinko-game-x8pc.onrender.com/api/ping" target="_blank"
+                style="display:inline-block; background:var(--gold); color:#000; padding:10px 20px; text-decoration:none; font-weight:bold; border-radius:5px; margin-bottom:10px;">
+                1. إيقاظ السيرفر يدوياً (اضغط هنا)
+            </a>
+            <p style="font-size:0.75rem; color:#aaa; margin-bottom:15px;">سيفتح رابط جديد؛ انتظر حتى تظهر كلمة "alive"
+                ثم قم بتحديث هذه الصفحة.</p>
+
+            <button onclick="location.reload(true)"
+                style="background:#444; color:white; border:none; padding:10px 20px; border-radius:5px; cursor:pointer; font-weight:bold;">
+                2. تحديث كامل للصفحة (F5)
+            </button>
+        </div>
+
         <div id="diagnostic-box"
-            style="display:none; margin-top:20px; background:#1e293b; padding:15px; border-radius:10px; text-align:left; font-family:monospace; font-size:0.7rem; border-left:4px solid var(--gold);">
-            <div style="color:var(--gold); margin-bottom:5px; font-weight:bold;">[NETWORK DIAGNOSTICS]</div>
-            <div id="diag-url" style="word-break:break-all;">URL: ...</div>
-            <div id="diag-error" style="color:#ef4444; margin:5px 0;">Error: ...</div>
-
-            <div style="margin:10px 0; padding:10px; background:rgba(0,0,0,0.3); border-radius:5px;">
-                <p style="margin:0 0 5px 0; color:#94a3b8;">إذا استمر الخطأ، جرب الضغط هنا أولاً لتنشيط السيرفر:</p>
-                <a href="https://ar-plinko-game-x8pc.onrender.com/api/ping" target="_blank"
-                    style="color:var(--gold); text-decoration:underline; font-weight:bold;">🔗 اضغط هنا لتنشيط
-                    الاتصال يدوياً</a>
-            </div>
-
-            <button onclick="localStorage.removeItem('ar_api_url'); location.reload();"
-                style="margin-top:10px; background:var(--gold); color:black; border:none; padding:10px; border-radius:5px; cursor:pointer; width:100%; font-weight:bold; font-size:0.9rem;">🔄
-                تفعيل نظام "الاتصال البديل" (Fix Connectivity)</button>
-            <button onclick="localStorage.clear(); sessionStorage.clear(); location.reload();"
-                style="margin-top:5px; background:#ef4444; color:white; border:none; padding:8px; border-radius:5px; cursor:pointer; width:100%; font-size:0.8rem; font-weight:bold;">🚨
-                تصفير شامل للمتصفح (Master Reset)</button>
-            <button
-                onclick="localStorage.setItem('ar_api_url', 'https://ar-plinko-game-x8pc.onrender.com'); location.reload();"
-                style="margin-top:5px; background:none; border:1px solid #444; color:white; padding:5px; border-radius:5px; cursor:pointer; width:100%; font-size:0.7rem; opacity:0.6;">إعادة
-                التعيين للإعداد الافتراضي</button>
+            style="display:none; margin-top:20px; padding:10px; background:#1e1e1e; border: 1px solid #333; font-size: 0.8rem; text-align: left; font-family: monospace;">
+            <div style="color:var(--gold); font-weight:bold; margin-bottom:5px;">📊 Diagnostic Info:</div>
+            <div id="diag-url" style="color:#aaa;"></div>
+            <div id="diag-error" style="color:#ef4444; margin-top:5px;"></div>
+            <hr style="border:0; border-top:1px solid #333; margin:10px 0;">
+            <button id="reset-system-btn"
+                style="width:100%; padding:8px; background:#333; color:#fff; border:1px solid #555; cursor:pointer;">⚠️
+                Emergency Master Reset</button>
         </div>
 
         <p id="offline-retry-msg" style="color:#f59e0b; margin-top:20px;">جاري محاولة إعادة الاتصال...</p>
