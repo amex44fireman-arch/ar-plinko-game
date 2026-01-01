@@ -122,10 +122,21 @@ function init() {
 
     // Ping Server
     console.log('📡 [NETWORK] Connecting to:', API_URL);
-    axios.get(`${API_URL}/api/ping`, { timeout: 30000 }) // 30s timeout for Render Cold Start
+    const overlay = $('offline-overlay');
+    const title = $('offline-title');
+    const msg = $('offline-msg');
+    const diagBox = $('diagnostic-box');
+
+    if (overlay) {
+        overlay.style.display = 'flex';
+        if (title) title.textContent = '📡 جاري الاتصال بالسيرفر...';
+        if (msg) msg.textContent = 'يرجى الانتظار، قد يستغرق السيرفر 30-50 ثانية للعمل لأول مرة.';
+        if (diagBox) diagBox.style.display = 'none';
+    }
+
+    axios.get(`${API_URL}/api/ping`, { timeout: 60000 }) // Increase to 60s for Render
         .then(() => {
             console.log('✅ [NETWORK] Server Online & Connected');
-            const overlay = $('offline-overlay');
             if (overlay) overlay.style.display = 'none';
         })
         .catch(err => {
@@ -146,18 +157,14 @@ function init() {
             }
 
             // SHOW DIAGNOSTIC OVERLAY
-            const overlay = $('offline-overlay');
             if (overlay) {
                 overlay.style.display = 'flex';
-                const title = $('offline-title');
-                const msg = $('offline-msg');
                 if (title) title.textContent = '⚠️ عذراً، لا يمكن الاتصال بالسيرفر';
                 if (msg) msg.textContent = 'السيرفر لا يستجيب حالياً أو أن الرابط غير صحيح.';
 
                 const retryMsg = $('offline-retry-msg');
                 if (retryMsg) retryMsg.style.display = 'none';
 
-                const diagBox = $('diagnostic-box');
                 if (diagBox) {
                     diagBox.style.display = 'block';
                     const dUrl = $('diag-url');
@@ -166,7 +173,6 @@ function init() {
                     if (dErr) dErr.textContent = `Error: ${err.message || 'Network Error'}`;
                 }
             }
-            sessionStorage.removeItem('configuring');
         });
 
     const safeClick = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
@@ -1118,7 +1124,7 @@ async function buyEnergy(packageId) {
 async function renderAdminUsers() {
     const list = $('admin-users-body');
     if (!list) return;
-    list.innerHTML = '<tr><td colspan="6" style="text-align:center">جاري جلب قائمة اللاعبين...</td></tr>';
+    list.innerHTML = '<tr><td colspan="7" style="text-align:center">جاري جلب قائمة اللاعبين...</td></tr>';
 
     try {
         const res = await axios.get(`${API_URL}/api/admin/users`);
@@ -1133,12 +1139,63 @@ async function renderAdminUsers() {
                 <td style="color:var(--gold); font-weight:700">${Number(u.balance).toLocaleString()}</td>
                 <td style="color:red">${Number(u.debt || 0).toLocaleString()}</td>
                 <td style="color:#10b981">${Number(u.accumulated_profit || 0).toLocaleString()}</td>
-                <td style="font-size:0.7rem; opacity:0.5">${new Date(u.created_at).toLocaleDateString('ar-EG')}</td>
+                <td>
+                    <button onclick='showUserDetails(${JSON.stringify(u || {})})' style="background:var(--gold); border:none; padding:5px 10px; cursor:pointer; font-weight:bold; font-size:0.7rem;">السجل 📜</button>
+                </td>
             </tr>
         `).join('');
     } catch (e) {
-        list.innerHTML = '<tr><td colspan="6" style="color:red">فشل جلب اللاعبين</td></tr>';
+        list.innerHTML = '<tr><td colspan="7" style="color:red">فشل جلب اللاعبين</td></tr>';
     }
+}
+
+function showUserDetails(user) {
+    const logs = user.activity || [];
+    let html = `
+        <div style="background:#000; color:white; padding:20px; border:1px solid var(--gold); max-width:600px; margin:20px auto; direction:rtl;">
+            <h3 style="color:var(--gold); margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:10px;">سجل نشاط: ${user.first_name} ${user.last_name}</h3>
+            <div style="max-height:400px; overflow-y:auto;">
+                <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+                    <thead>
+                        <tr style="border-bottom:2px solid #222;">
+                            <th style="padding:10px; text-align:right;">نوع العمل</th>
+                            <th style="padding:10px; text-align:right;">المبلغ</th>
+                            <th style="padding:10px; text-align:right;">الحالة</th>
+                            <th style="padding:10px; text-align:right;">التاريخ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    `;
+
+    if (logs.length === 0) {
+        html += `<tr><td colspan="4" style="text-align:center; padding:20px; opacity:0.5;">لا يوجد سجل عمليات لهذا المستخدم</td></tr>`;
+    } else {
+        html += logs.map(l => {
+            const statusColor = l.status === 'success' ? '#10b981' : (l.status === 'failed' ? '#ef4444' : '#facc15');
+            return `
+                <tr style="border-bottom:1px solid #111;">
+                    <td style="padding:10px;">${l.type}</td>
+                    <td style="padding:10px; font-weight:bold;">${Number(l.amount).toLocaleString()}</td>
+                    <td style="padding:10px; color:${statusColor}">${l.status}</td>
+                    <td style="padding:10px; opacity:0.6; font-size:0.7rem;">${new Date(l.date).toLocaleString('ar-EG')}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    html += `
+                    </tbody>
+                </table>
+            </div>
+            <button onclick="this.parentElement.remove()" style="margin-top:20px; width:100%; padding:10px; background:#333; color:white; border:none; cursor:pointer;">إغلاق</button>
+        </div>
+    `;
+
+    const viewer = document.createElement('div');
+    viewer.id = 'user-details-overlay';
+    viewer.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:200000; overflow-y:auto;';
+    viewer.innerHTML = html;
+    document.body.appendChild(viewer);
 }
 
 async function renderAdminHistory() {

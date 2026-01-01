@@ -388,10 +388,9 @@ app.post('/api/bank/loan', (req, res) => {
 app.get('/api/admin/users', (req, res) => {
     const sql = `
         SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.balance, u.debt, u.accumulated_profit, u.created_at,
-        JSON_ARRAYAGG(JSON_OBJECT('type', t.type, 'amount', t.amount, 'status', t.status, 'date', t.created_at)) as activity
+        (SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT('type', t.type, 'amount', t.amount, 'status', t.status, 'date', t.created_at)), JSON_ARRAY())
+         FROM transactions t WHERE t.user_id = u.id) as activity
         FROM users u
-        LEFT JOIN transactions t ON u.id = t.user_id
-        GROUP BY u.id
         ORDER BY u.created_at DESC`;
     db.query(sql, (err, results) => {
         if (err) return res.status(500).json({ error: err.message });

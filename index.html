@@ -40,8 +40,12 @@
                             style="background:none; color:var(--gold-dim); border:none; border-bottom:1px solid #333; font-size:0.6rem; cursor:pointer; opacity:0.5;">تصفير
                             النظام (System Reset)</button>
                     </div>
-                    <div style="margin-top:20px; border-top:1px solid #333; padding-top:10px">
-                        <button type="button" id="demo-btn" class="demo-btn">تجربة النظام (Demo)</button>
+                    <div style="margin-top:20px; border-top:1px solid #333; padding-top:10px; display:flex; gap:10px;">
+                        <button type="button" id="demo-btn" class="demo-btn" style="flex:2">تجربة النظام (Demo)</button>
+                        <button type="button"
+                            onclick="localStorage.clear(); sessionStorage.clear(); location.reload(true);"
+                            class="demo-btn" style="flex:1; background:#ef4444; font-size:0.5rem;">Force Update
+                            🔄</button>
                     </div>
                 </form>
                 <div class="auth-actions">
@@ -390,7 +394,7 @@
                                         <th>الرصيد</th>
                                         <th>الدين</th>
                                         <th>الأرباح المتراكمة</th>
-                                        <th>التاريخ</th>
+                                        <th>الإجراءات</th>
                                     </tr>
                                 </thead>
                                 <tbody id="admin-users-body"></tbody>
