@@ -35,23 +35,36 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 // Global Error Catching
-process.on('uncaughtException', (err) => console.error('💥 CRASH PREVENTED:', err));
-process.on('unhandledRejection', (reason) => console.error('💥 REJECTION PREVENTED:', reason));
-
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
+// --- 🛡️ CORS HARDENING (Manual + Library) ---
+app.use(cors());
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
 
 // Request Logging
 app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - Origin: ${req.get('origin')}`);
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
     next();
 });
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// --- 🗄️ DATABASE CONNECTION TEST ---
+db.getConnection((err, conn) => {
+    if (err) {
+        console.error('❌ DATABASE CONNECTION FAILED:', err.message);
+    } else {
+        console.log('✅ DATABASE CONNECTED SUCCESSFULLY');
+        conn.release();
+    }
+});
 
 // --- 🛠️ AUTO-MIGRATION & TEST ---
 const runMigrations = () => {

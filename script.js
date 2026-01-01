@@ -11,31 +11,32 @@ console.log(`%c AR GAME v${VERSION} LOADED`, 'background: #000; color: #ffd700; 
 if (typeof axios !== 'undefined') axios.defaults.timeout = 60000;
 
 // HARDCODED API URL - Users will connect to this automatically
-const PRODUCTION_API_URL = 'https://ar-plinko-game-x8pc.onrender.com'; // ⚠️ REPLACE WITH YOUR ACTUAL RENDER URL
+const PRODUCTION_API_URL = 'https://ar-plinko-game-x8pc.onrender.com';
+let API_URL = PRODUCTION_API_URL;
 
 // Fallback to Production if localStorage URL fails
 async function resolveOptimalAPI() {
     console.log('📡 [NETWORK] Optimization Started...');
 
-    // 1. Try parallel probes
-    const probes = [
-        axios.get('/api/ping', { timeout: 4000 }).then(() => ({ url: '', type: 'PROXY' })),
-        axios.get(`${PRODUCTION_API_URL}/api/ping`, { timeout: 8000 }).then(() => ({ url: PRODUCTION_API_URL, type: 'DIRECT' }))
-    ];
+    // 0. Atomic Fetch Test (Avoids Axios overhead/config issues)
+    const atomicPing = async (url) => {
+        try {
+            const r = await fetch(url + '/api/ping', { mode: 'cors', cache: 'no-cache' });
+            if (r.ok) return true;
+        } catch (e) { }
+        return false;
+    };
 
+    // 1. Try parallel probes
     try {
-        const first = await Promise.any(probes);
-        console.log(`✅ [NETWORK] Fast Lane Found: ${first.type}`);
-        return first.url;
-    } catch (e) {
-        console.warn('⚠️ [NETWORK] Fast lanes failed. Checking saved configuration...');
-    }
+        if (await atomicPing('')) return '';
+        if (await atomicPing(PRODUCTION_API_URL)) return PRODUCTION_API_URL;
+    } catch (e) { }
 
     // 2. Fallback to saved
     const saved = localStorage.getItem('ar_api_url');
     if (saved && saved.startsWith('http')) return saved;
 
-    // 3. Last resort
     return PRODUCTION_API_URL;
 }
 
@@ -153,51 +154,30 @@ async function init() {
         if (diagBox) diagBox.style.display = 'none';
     }
 
-    try {
-        API_URL = await resolveOptimalAPI();
-        console.log('📡 [NETWORK] Target API:', API_URL || '(Proxy Mode)');
+    let retryCount = 0;
+    const attemptConnection = async () => {
+        try {
+            API_URL = await resolveOptimalAPI();
+            console.log('📡 [NETWORK] Attempting Target:', API_URL || '(Native Proxy)');
 
-        const pingRes = await axios.get(`${API_URL}/api/ping`, { timeout: 60000 });
-        console.log('✅ [NETWORK] Server Connected');
-        if (overlay) overlay.style.display = 'none';
-    } catch (err) {
-        console.error('❌ [NETWORK] Connection Error:', err.message);
+            const pingRes = await axios.get(`${API_URL}/api/ping?t=${Date.now()}`, { timeout: 15000 });
+            console.log('✅ [NETWORK] Server Ready!');
+            if (overlay) overlay.style.display = 'none';
+        } catch (err) {
+            retryCount++;
+            if (msg) msg.textContent = `جاري محاولة الاتصال (${retryCount}/10)... يرجى الانتظار حتى يستيقظ السيرفر.`;
 
-        // diagnostic log for user
-        console.log('%c DIAGNOSTIC INFO:', 'color: orange; font-weight: bold;');
-        console.log('URL Attempted:', API_URL);
-        console.log('Error Type:', err.name);
-        console.log('Error Code:', err.code);
-
-        // DETECT FILE:// PROTOCOL
-        const isLocalFile = window.location.protocol === 'file:';
-
-        // SHOW DIAGNOSTIC OVERLAY
-        if (overlay) {
-            overlay.style.display = 'flex';
-            if (title) title.textContent = '⚠️ عذراً، لا يمكن الاتصال بالسيرفر';
-
-            let errorContext = 'السيرفر لا يستجيب حالياً أو أن الرابط غير صحيح.';
-            if (isLocalFile) {
-                errorContext = '❌ النظام لا يعمل عند تشغيله كملف (Double Click). يجب رفعه على استضافة (مثل Cloudflare) أو استخدامه عبر Local Server.';
-            } else if (err.message.includes('Network Error')) {
-                errorContext = 'فشل في الاتصال (Network Error). قد يكون السبب حظر من المتصفح (CORS) أو مشكلة في شبكتك.';
-            }
-            if (msg) msg.textContent = errorContext;
-
-            const retryMsg = $('offline-retry-msg');
-            if (retryMsg) retryMsg.style.display = 'none';
-
-            if (diagBox) {
-                diagBox.style.display = 'block';
-                const dUrl = $('diag-url');
-                const dErr = $('diag-error');
-                if (dUrl) dUrl.textContent = `URL: ${API_URL || 'Proxy'}`;
-                if (dErr) dErr.textContent = `Details: ${err.message} (Code: ${err.code || 'N/A'})`;
+            if (retryCount < 10) {
+                setTimeout(attemptConnection, 5000);
+            } else {
+                showDiagnosticError(err);
             }
         }
-    }
+    };
 
+    attemptConnection();
+
+    // --- UI Listeners (Moved inside init) ---
     const safeClick = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
 
     safeClick('login-form', (e) => doLogin(e));
@@ -236,15 +216,41 @@ async function init() {
 
     setupDepositListeners();
     checkAutoLogin();
-    initMultipliers(); // Call the new function
+    initMultipliers();
 
-    // Hidden Trigger: Click logo 5 times to configure API
     const logo = document.querySelector('.logo');
     if (logo) {
         logo.style.cursor = 'pointer';
         logo.onclick = handleLogoClick;
     }
 }
+
+function showDiagnosticError(err) {
+    const overlay = $('offline-overlay');
+    const title = $('offline-title');
+    const msg = $('offline-msg');
+    const diagBox = $('diagnostic-box');
+
+    if (overlay) {
+        overlay.style.display = 'flex';
+        if (title) title.textContent = '❌ فشل الاتصال النهائي';
+        if (msg) msg.textContent = 'لا يمكن الوصول للسيرفر بعد 10 محاولات. قد يكون هناك حظر من شبكتك أو المتصفح.';
+
+        const isLocalFile = window.location.protocol === 'file:';
+        if (isLocalFile) {
+            msg.innerHTML = '<span style="color:#ef4444">خطأ أمني:</span> لا يمكنك تشغيل اللعبة من جهازك مباشرة. يجب رفعها على استضافة (Cloudflare/Netlify) أو استخدام سيرفر محلي.';
+        }
+
+        if (diagBox) {
+            diagBox.style.display = 'block';
+            const dUrl = $('diag-url');
+            const dErr = $('diag-error');
+            if (dUrl) dUrl.textContent = `Last Attempted URL: ${API_URL || 'Proxy Path'}`;
+            if (dErr) dErr.textContent = `Error: ${err.message} (Code: ${err.code || 'XHR_FAIL'})`;
+        }
+    }
+}
+
 
 // --- User Handling (Simplified) ---
 function saveUser(u) {
