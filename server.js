@@ -66,14 +66,7 @@ db.getConnection((err, conn) => {
     }
 });
 
-// --- 🛠️ AUTO-MIGRATION & TEST ---
-const runMigrations = () => {
-    const sql = `ALTER TABLE transactions MODIFY COLUMN type ENUM('deposit', 'withdraw', 'game_loss', 'game_win', 'loan', 'energy_purchase', 'sweep') NOT NULL`;
-    db.query(sql, (err) => {
-        if (err) console.log('ℹ️ Migration check: Schema OK.');
-        else console.log('✅ Migration check: Schema Updated.');
-    });
-};
+
 
 db.getConnection((err, conn) => {
     if (err) console.error('❌ DB CONNECTION FAILED:', err.message);
@@ -589,4 +582,3 @@ app.post('/api/admin/process', (req, res) => {
 });
 
 // Server start moved to top for Render stability
-
