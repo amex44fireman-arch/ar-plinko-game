@@ -12,6 +12,7 @@ if (typeof axios !== 'undefined') axios.defaults.timeout = 60000;
 
 // HARDCODED API URL - Users will connect to this automatically
 const PRODUCTION_API_URL = 'https://ar-plinko-game-x8pc.onrender.com';
+const CURRENT_ORIGIN = window.location.origin;
 let API_URL = PRODUCTION_API_URL;
 
 // Fallback to Production if localStorage URL fails
@@ -304,7 +305,8 @@ async function doRegister(e) {
         console.error('Registration Error Details:', e);
         const errorMsg = e.response?.data?.error || e.message;
         const status = e.response?.status || 'NETWORK_ERROR';
-        alert(`❌ فشل تسجيل الحساب (Error ${status}): \n${errorMsg}\n\nالمسار المستهدف: ${API_URL}/api/auth/register\n\nتأكد من صحة رابط السيرفر في الإعدادات (5 ضغطات على اللوجو).`);
+        const target = `${API_URL}/api/auth/register`;
+        alert(`❌ فشل تسجيل الحساب (Error ${status}): \n${errorMsg}\n\nTarget: ${target}\n\nتأكد من:\n1. أن رابط السيرفر صحيح.\n2. أنك لا تستخدم VPN يعيق الاتصال.\n3. جرب الضغط على "Reset System" في الشاشة الرئيسية.`);
     } finally {
         showLoading(false);
     }
