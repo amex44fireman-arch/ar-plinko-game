@@ -1342,6 +1342,18 @@ function renderBoard() {
     }
 }
 
+function initMultipliers() {
+    const container = $('betting-sections');
+    if (!container) return;
+    container.innerHTML = '';
+    CONFIG.MULTIPLIERS.forEach((m) => {
+        const div = document.createElement('div');
+        div.className = 'bucket';
+        div.innerHTML = `<small>×</small>${m}`;
+        container.appendChild(div);
+    });
+}
+
 // --- 🎭 Animation & Graphics ---
 // (Board rendering is handled in renderBoard)
 
