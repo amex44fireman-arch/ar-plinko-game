@@ -76,6 +76,11 @@ function handleLogoClick() {
 // Utils moved to top to prevent hoisting errors
 const $ = (id) => document.getElementById(id);
 const showAuth = (mode) => {
+    const ov = $('auth-overlay');
+    if (ov) {
+        ov.style.display = 'flex';
+        ov.style.opacity = '1';
+    }
     const l = $('login-form-container');
     const r = $('register-form-container');
     if (l) l.style.display = mode === 'login' ? 'block' : 'none';
@@ -1150,6 +1155,7 @@ async function renderAdminRevenue(pin) {
 
             const rev = res.data.revenue;
             $('rev-total').textContent = rev.total.toLocaleString() + ' SYP';
+            if ($('rev-net')) $('rev-net').textContent = rev.total.toLocaleString() + ' SYP';
             $('rev-losses').textContent = rev.game_losses.toLocaleString() + ' SYP';
             $('rev-wins').textContent = rev.game_wins.toLocaleString() + ' SYP';
             $('rev-energy').textContent = rev.energy_sales.toLocaleString() + ' SYP';
