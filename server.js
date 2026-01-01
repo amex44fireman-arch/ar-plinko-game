@@ -74,17 +74,16 @@ pool.getConnection((err, conn) => {
 });
 
 function runMigrations() {
-    const migrations = [
-        `ALTER TABLE transactions MODIFY COLUMN type ENUM('deposit', 'withdraw', 'game_loss', 'game_win', 'loan', 'energy_purchase', 'sweep') NOT NULL`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(255) DEFAULT NULL`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS debt DOUBLE DEFAULT 0`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS accumulated_profit DOUBLE DEFAULT 0`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS energy INT DEFAULT 15`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_energy_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP`
-    ];
-    migrations.forEach(sql => {
-        db.execute(sql).catch(e => console.log('ℹ️ Migration Info:', e.message));
-    });
+    // Note: Column-level IF NOT EXISTS is not standard MySQL. Using individual commands.
+    const run = async (sql) => {
+        try { await db.execute(sql); } catch (e) { console.log('ℹ️ Migration Note:', e.message); }
+    };
+    run(`ALTER TABLE transactions MODIFY COLUMN type ENUM('deposit', 'withdraw', 'game_loss', 'game_win', 'loan', 'energy_purchase', 'sweep') NOT NULL`);
+    run(`ALTER TABLE users ADD COLUMN phone VARCHAR(255) DEFAULT NULL`);
+    run(`ALTER TABLE users ADD COLUMN debt DOUBLE DEFAULT 0`);
+    run(`ALTER TABLE users ADD COLUMN accumulated_profit DOUBLE DEFAULT 0`);
+    run(`ALTER TABLE users ADD COLUMN energy INT DEFAULT 15`);
+    run(`ALTER TABLE users ADD COLUMN last_energy_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
 }
 
 // --- 🛠️ INTERNAL UTILITIES ---

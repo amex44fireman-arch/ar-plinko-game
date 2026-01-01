@@ -301,9 +301,10 @@ async function doRegister(e) {
             showAuth('login');
         }
     } catch (e) {
-        console.error('Registration Error:', e);
+        console.error('Registration Error Details:', e);
         const errorMsg = e.response?.data?.error || e.message;
-        alert(`❌ فشل تسجيل الحساب: \n${errorMsg}\n\nتأكد من صحة رابط السيرفر في الإعدادات (اضغط على اللوجو 5 مرات لتغييره).`);
+        const status = e.response?.status || 'NETWORK_ERROR';
+        alert(`❌ فشل تسجيل الحساب (Error ${status}): \n${errorMsg}\n\nالمسار المستهدف: ${API_URL}/api/auth/register\n\nتأكد من صحة رابط السيرفر في الإعدادات (5 ضغطات على اللوجو).`);
     } finally {
         showLoading(false);
     }
@@ -324,9 +325,11 @@ async function doLogin(e) {
             loginUser(res.data.user);
         }
     } catch (e) {
+        console.error('Login Error Details:', e);
         let msg = 'بيانات خاطئة أو فشل في الاتصال';
         if (e.response && e.response.status === 401) msg = 'البريد أو كلمة المرور غير صحيحة';
-        alert(`${msg}\n\nنصيحة: إذا كنت قد سجلت قديماً، يرجى عمل "حساب جديد" لأننا انتقلنا لنظام حماية حقيقي.`);
+        const status = e.response?.status || 'NETWORK_ERROR';
+        alert(`❌ فشل الدخول (${status}):\n${msg}\n\nالمسار المستهدف: ${API_URL}/api/auth/login`);
     } finally {
         showLoading(false);
     }
