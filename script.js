@@ -4,7 +4,7 @@ window.onerror = function (msg, url, line, col, error) {
     console.error('Global Error:', error);
 };
 
-const VERSION = '4.0.0 - SECURE EDITION';
+const VERSION = '4.1.0 - ULTRA CONNECT';
 console.log(`%c AR GAME v${VERSION} LOADED`, 'background: #000; color: #ffd700; font-size: 20px; font-weight: bold;');
 
 // --- 🚩 SMART API CONFIGURATION 🚩 ---
@@ -15,23 +15,27 @@ const PRODUCTION_API_URL = 'https://ar-plinko-game-x8pc.onrender.com'; // ⚠️
 
 // Fallback to Production if localStorage URL fails
 async function resolveOptimalAPI() {
-    // 1. Try relative proxy (best for Cloudflare/Netlify)
+    console.log('📡 [NETWORK] Optimization Started...');
+
+    // 1. Try parallel probes
+    const probes = [
+        axios.get('/api/ping', { timeout: 4000 }).then(() => ({ url: '', type: 'PROXY' })),
+        axios.get(`${PRODUCTION_API_URL}/api/ping`, { timeout: 8000 }).then(() => ({ url: PRODUCTION_API_URL, type: 'DIRECT' }))
+    ];
+
     try {
-        console.log('🔍 [NETWORK] Probing relative proxy...');
-        const res = await axios.get('/api/ping', { timeout: 5000 });
-        if (res.data.status === 'alive') {
-            console.log('✅ [NETWORK] Proxy Detected! Using Relative Path.');
-            return ''; // Use relative path
-        }
+        const first = await Promise.any(probes);
+        console.log(`✅ [NETWORK] Fast Lane Found: ${first.type}`);
+        return first.url;
     } catch (e) {
-        console.log('ℹ️ [NETWORK] Relative proxy not available.');
+        console.warn('⚠️ [NETWORK] Fast lanes failed. Checking saved configuration...');
     }
 
-    // 2. Try saved URL
+    // 2. Fallback to saved
     const saved = localStorage.getItem('ar_api_url');
     if (saved && saved.startsWith('http')) return saved;
 
-    // 3. Last resort: Hardcoded Production URL
+    // 3. Last resort
     return PRODUCTION_API_URL;
 }
 

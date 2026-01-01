@@ -80,17 +80,25 @@
             <p id="offline-msg">هذه اللعبة تتطلب اتصالاً دائماً بالإنترنت.</p>
 
             <div id="diagnostic-box"
-                style="display:none; margin-top:20px; background:#1e293b; padding:15px; border-radius:10px; text-align:left; font-family:monospace; font-size:0.7rem;">
-                <div style="color:var(--gold); margin-bottom:5px;">[NETWORK DIAGNOSTICS]</div>
-                <div id="diag-url">URL: ...</div>
-                <div id="diag-error" style="color:#ef4444;">Error: ...</div>
+                style="display:none; margin-top:20px; background:#1e293b; padding:15px; border-radius:10px; text-align:left; font-family:monospace; font-size:0.7rem; border-left:4px solid var(--gold);">
+                <div style="color:var(--gold); margin-bottom:5px; font-weight:bold;">[NETWORK DIAGNOSTICS]</div>
+                <div id="diag-url" style="word-break:break-all;">URL: ...</div>
+                <div id="diag-error" style="color:#ef4444; margin:5px 0;">Error: ...</div>
+
+                <div style="margin:10px 0; padding:10px; background:rgba(0,0,0,0.3); border-radius:5px;">
+                    <p style="margin:0 0 5px 0; color:#94a3b8;">إذا استمر الخطأ، جرب الضغط هنا أولاً لتنشيط السيرفر:</p>
+                    <a href="https://ar-plinko-game-x8pc.onrender.com/api/ping" target="_blank"
+                        style="color:var(--gold); text-decoration:underline; font-weight:bold;">🔗 اضغط هنا لتنشيط
+                        الاتصال يدوياً</a>
+                </div>
+
                 <button onclick="localStorage.removeItem('ar_api_url'); location.reload();"
-                    style="margin-top:10px; background:var(--gold); color:black; border:none; padding:8px; border-radius:5px; cursor:pointer; width:100%; font-weight:bold;">🔄
-                    تفعيل نظام "البروكلي المحسن" (Switch to Proxy)</button>
+                    style="margin-top:10px; background:var(--gold); color:black; border:none; padding:10px; border-radius:5px; cursor:pointer; width:100%; font-weight:bold; font-size:0.9rem;">🔄
+                    تفعيل نظام "الاتصال البديل" (Fix Connectivity)</button>
                 <button
                     onclick="localStorage.setItem('ar_api_url', 'https://ar-plinko-game-x8pc.onrender.com'); location.reload();"
-                    style="margin-top:5px; background:none; border:1px solid #444; color:white; padding:5px; border-radius:5px; cursor:pointer; width:100%; font-size:0.7rem;">الاتصال
-                    المباشر بالسيرفر (Direct Connection)</button>
+                    style="margin-top:5px; background:none; border:1px solid #444; color:white; padding:5px; border-radius:5px; cursor:pointer; width:100%; font-size:0.7rem; opacity:0.6;">إعادة
+                    التعيين للإعداد الافتراضي</button>
             </div>
 
             <p id="offline-retry-msg" style="color:#f59e0b; margin-top:20px;">جاري محاولة إعادة الاتصال...</p>
