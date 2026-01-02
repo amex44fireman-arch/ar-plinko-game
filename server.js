@@ -19,17 +19,54 @@ process.on('unhandledRejection', (reason) => console.error('💥 REJECTION PREVE
 
 // --- 🌐 GLOBAL CONFIG ---
 // Define the SyriaTel Cash configuration locally or via env
-const SYRIATEL_CASH_CONFIG = {
-    MERCHANT_ID: process.env.SYRIATEL_MERCHANT_ID || 'YOUR_MERCHANT_ID_HERE',
-    API_KEY: process.env.SYRIATEL_API_KEY || 'YOUR_API_KEY_HERE',
-    WALLET_NUMBER: process.env.SYRIATEL_WALLET || '9639########',
-    AUTO_TRANSFER: true
+const PAYMENT_CONFIG = {
+    SYRIATEL_CASH: {
+        MERCHANT_ID: process.env.SYRIATEL_MERCHANT_ID || 'YOUR_MERCHANT_ID_HERE',
+        API_KEY: process.env.SYRIATEL_API_KEY || 'YOUR_API_KEY_HERE',
+        WALLET_NUMBER: process.env.SYRIATEL_WALLET || '9639########',
+        AUTO_TRANSFER: true
+    },
+    SHAM_CASH: {
+        MERCHANT_ID: process.env.SHAM_MERCHANT_ID || 'YOUR_MERCHANT_ID_HERE',
+        API_KEY: process.env.SHAM_API_KEY || 'YOUR_API_KEY_HERE',
+        WALLET_NUMBER: process.env.SHAM_WALLET || '9639########',
+        AUTO_TRANSFER: true
+    },
+    ELECTRONIC: {
+        WALLET_ADDRESS: process.env.ELECTRONIC_WALLET || 'YOUR_WALLET_ADDRESS',
+        AUTO_TRANSFER: true
+    }
 };
 
 // --- 🛡️ NON-NEGOTIABLE CORS & SECURITY ---
-app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'] }));
+const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+    'https://your-plinko-frontend.netlify.app',  // Replace with your actual frontend URL
+    'https://your-plinko-frontend.vercel.app',   // Replace with your actual frontend URL
+    'https://your-github-pages.github.io'        // Replace with your actual GitHub Pages URL
+];
+
+app.use(cors({
+    origin: function(origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            console.log('Blocked by CORS:', origin);
+            callback(new Error('Not allowed by CORS'));
+        }
+    }
+}));
+
 app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
+    const origin = req.headers.origin;
+    if (allowedOrigins.includes(origin) || !origin) {
+        res.header('Access-Control-Allow-Origin', origin || '*');
+    }
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     if (req.method === 'OPTIONS') return res.sendStatus(200);
@@ -87,21 +124,30 @@ function runMigrations() {
 }
 
 // --- 🛠️ INTERNAL UTILITIES ---
-async function fireAndForgetTransfer(amount, description) {
-    if (SYRIATEL_CASH_CONFIG.MERCHANT_ID === 'YOUR_MERCHANT_ID_HERE' || !SYRIATEL_CASH_CONFIG.AUTO_TRANSFER) {
-        console.warn(`[CASH] Skipping transfer: Merchant ID not configured.`);
+async function fireAndForgetTransfer(amount, description, method = 'SYRIATEL_CASH') {
+    const config = PAYMENT_CONFIG[method];
+    
+    if (!config || config.MERCHANT_ID === 'YOUR_MERCHANT_ID_HERE' || !config.AUTO_TRANSFER) {
+        console.warn(`[CASH] Skipping transfer: ${method} not configured.`);
         return;
     }
+    
     try {
-        await axios.post('https://api.syriatel.sy/v1/cash/transfer-to-merchant', {
-            merchant_id: SYRIATEL_CASH_CONFIG.MERCHANT_ID,
-            api_key: SYRIATEL_CASH_CONFIG.API_KEY,
-            amount: amount,
-            recipient_wallet: SYRIATEL_CASH_CONFIG.WALLET_NUMBER,
-            remark: description
-        }, { timeout: 15000 });
+        if (method === 'SYRIATEL_CASH' || method === 'SHAM_CASH') {
+            await axios.post('https://api.syriatel.sy/v1/cash/transfer-to-merchant', {
+                merchant_id: config.MERCHANT_ID,
+                api_key: config.API_KEY,
+                amount: amount,
+                recipient_wallet: config.WALLET_NUMBER,
+                remark: description
+            }, { timeout: 15000 });
+        } else if (method === 'ELECTRONIC') {
+            // Handle electronic payment transfer
+            console.log(`[ELECTRONIC] Transfer of ${amount} SYP to ${config.WALLET_ADDRESS} for: ${description}`);
+            // In a real implementation, you would call the appropriate electronic payment API
+        }
     } catch (e) {
-        console.error(`[CASH] Transfer Error:`, e.message);
+        console.error(`[CASH] Transfer Error for ${method}:`, e.message);
     }
 }
 
@@ -190,9 +236,15 @@ app.post('/api/game/result', async (req, res) => {
         if (user.role !== 'admin' && user.energy <= 0) return res.status(403).json({ error: 'نظام الطاقة انتهى لليوم' });
         if (user.balance < betAmount) return res.status(400).json({ error: 'رصيدك غير كافٍ' });
 
-        const houseCut = betAmount * 0.10;
+        const houseCut = betAmount * 0.10; // Golden Coin Strategy: 10% commission on every bet
         const effectiveBet = betAmount - houseCut;
         let finalPayout = effectiveBet * multiplier;
+        
+        // RTP System: If user wins, take 10% of winnings (RTP = 90%)
+        if (multiplier > 0 && finalPayout > 0) {
+            const rtpCut = finalPayout * 0.10; // 10% of winnings as RTP adjustment
+            finalPayout = finalPayout - rtpCut;
+        }
 
         let debtRepaid = 0;
         if (finalPayout > 0 && user.debt > 0) {
@@ -205,7 +257,7 @@ app.post('/api/game/result', async (req, res) => {
         // SWEEP Logic (x0)
         if (multiplier === 0) {
             if (newAccumulated > 0) {
-                fireAndForgetTransfer(newAccumulated, `Sweep x0 - User ${userId}`);
+                await fireAndForgetTransfer(newAccumulated, `Sweep x0 - User ${userId}`);
                 await db.execute('INSERT INTO transactions (user_id, type, amount, status, method) VALUES (?, "sweep", ?, "success", "internal")', [userId, newAccumulated]);
             }
             newAccumulated = 0;

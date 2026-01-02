@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ar-game-v2026-v3'; // Version bump for Ultra Connect
+const CACHE_NAME = 'ar-game-v2026-v6'; // Forced refresh
 const ASSETS = [
     '/',
     '/index.html',
@@ -7,7 +7,6 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-    // Force immediate activation
     self.skipWaiting();
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
@@ -15,7 +14,6 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-    // Clear ALL old caches to force fresh script.js
     event.waitUntil(
         caches.keys().then((keys) => {
             return Promise.all(
@@ -28,7 +26,11 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-    // Network-First strategy to ensure latest script.js is used
+    // CRITICAL: NEVER cache API calls. 
+    if (event.request.url.includes('/api/')) {
+        return;
+    }
+
     event.respondWith(
         fetch(event.request).catch(() => caches.match(event.request))
     );

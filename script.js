@@ -20,12 +20,27 @@ async function resolveOptimalAPI() {
     // 1. User Priority: If the user manually set a URL, use it immediately
     const saved = localStorage.getItem('ar_api_url');
     if (saved && saved.startsWith('http')) {
-        console.log('%c 👤 [MANUAL MODE] Using user-defined API:', 'color: #ffd700; font-weight: bold;', saved);
+        console.log('👤 [USER] Using manual API URL:', saved);
         return saved;
     }
 
-    // 2. Fixed Mode: No auto-probing, strictly use the Render URL
-    console.log('📡 [NETWORK] Using Fixed Production API:', PRODUCTION_API_URL);
+    console.log('📡 [NETWORK] Optimization Started (Auto-Mode)...');
+
+    // 2. Atomic Fetch Test (Avoids Axios overhead/config issues)
+    const atomicPing = async (url) => {
+        try {
+            const r = await fetch(url + '/api/ping', { mode: 'cors', cache: 'no-cache' });
+            if (r.ok) return true;
+        } catch (e) { }
+        return false;
+    };
+
+    // 3. Try parallel probes
+    try {
+        if (await atomicPing('')) return '';
+        if (await atomicPing(PRODUCTION_API_URL)) return PRODUCTION_API_URL;
+    } catch (e) { }
+
     return PRODUCTION_API_URL;
 }
 
@@ -61,11 +76,6 @@ function handleLogoClick() {
 // Utils moved to top to prevent hoisting errors
 const $ = (id) => document.getElementById(id);
 const showAuth = (mode) => {
-    const ov = $('auth-overlay');
-    if (ov) {
-        ov.style.display = 'flex';
-        ov.style.opacity = '1';
-    }
     const l = $('login-form-container');
     const r = $('register-form-container');
     if (l) l.style.display = mode === 'login' ? 'block' : 'none';
@@ -148,48 +158,41 @@ async function init() {
         return;
     }
 
+    const overlay = $('offline-overlay');
+    const title = $('offline-title');
+    const msg = $('offline-msg');
+    const diagBox = $('diagnostic-box');
 
-
+    if (overlay) {
+        overlay.style.display = 'flex';
+        if (title) title.textContent = '📡 جاري الاتصال بالسيرفر...';
+        if (msg) msg.textContent = 'نظام الحماية عالي؛ قد يستغرق الاتصال الأول 30-50 ثانية.';
+        if (diagBox) diagBox.style.display = 'none';
+    }
 
     NetworkMonitor.isServerChecking = true; // Lock the overlay
 
     let retryCount = 0;
     const attemptConnection = async () => {
         try {
-            // ALWAYS show diagnostic box if manually configured or after first fail
-            const manuallySet = !!localStorage.getItem('ar_api_url');
-            if ((retryCount >= 1 || manuallySet) && diagBox) {
-                diagBox.style.display = 'block';
-            }
-
             API_URL = await resolveOptimalAPI();
             console.log('📡 [NETWORK] Attempting Target:', API_URL || '(Native Proxy)');
 
-            // Wake-up call
-            fetch(`${API_URL}/api/ping`, { mode: 'no-cors' }).catch(() => { });
-
-            const pingRes = await axios.get(`${API_URL}/api/ping?v=${Date.now()}`, {
-                timeout: 10000,
-                headers: { 'Cache-Control': 'no-cache' }
-            });
+            const pingRes = await axios.get(`${API_URL}/api/ping?t=${Date.now()}`, { timeout: 15000 });
             console.log('✅ [NETWORK] Server Ready!');
 
-            NetworkMonitor.isServerChecking = false;
+            NetworkMonitor.isServerChecking = false; // Unlock
             if (overlay) overlay.style.display = 'none';
+
+            // Start Auth Logic only AFTER connection is 100% verified
             checkAutoLogin();
         } catch (err) {
             retryCount++;
             console.warn(`⚠️ [NETWORK] Attempt ${retryCount} failed.`, err.message);
+            if (msg) msg.textContent = `جاري محاولة الاتصال (${retryCount}/10)... يرجى الانتظار حتى يستيقظ السيرفر.`;
 
-            if (msg) {
-                if (retryCount === 1) msg.textContent = 'السيرفر يغفو حالياً... جاري إيقاظه ☕';
-                else if (retryCount === 3) msg.textContent = 'تأخر السيرفر قليلاً، جاري المحاولة بشكل أقوى 💪';
-                else if (retryCount > 6) msg.textContent = `محاولة رقم ${retryCount}... يرجى التحقق من VPN أو ضبط السيرفر يدوياً.`;
-            }
-
-            if (retryCount < 15) { // Increased retries
-                const delay = retryCount < 3 ? 3000 : 5000;
-                setTimeout(attemptConnection, delay);
+            if (retryCount < 10) {
+                setTimeout(attemptConnection, 5000);
             } else {
                 NetworkMonitor.isServerChecking = false;
                 showDiagnosticError(err);
@@ -303,7 +306,15 @@ async function doRegister(e) {
         const errorMsg = e.response?.data?.error || e.message;
         const status = e.response?.status || 'NETWORK_ERROR';
         const target = `${API_URL}/api/auth/register`;
-        alert(`❌ فشل تسجيل الحساب (Error ${status}): \n${errorMsg}\n\nTarget: ${target}\n\nتأكد من:\n1. أن رابط السيرفر صحيح.\n2. أنك لا تستخدم VPN يعيق الاتصال.\n3. جرب الضغط على "Reset System" في الشاشة الرئيسية.`);
+        alert(`❌ فشل تسجيل الحساب (Error ${status}): 
+${errorMsg}
+
+Target: ${target}
+
+تأكد من:
+1. أن رابط السيرفر صحيح.
+2. أنك لا تستخدم VPN يعيق الاتصال.
+3. جرب الضغط على "Reset System" في الشاشة الرئيسية.`);
     } finally {
         showLoading(false);
     }
@@ -1130,7 +1141,6 @@ async function renderAdminRevenue(pin) {
 
             const rev = res.data.revenue;
             $('rev-total').textContent = rev.total.toLocaleString() + ' SYP';
-            if ($('rev-net')) $('rev-net').textContent = rev.total.toLocaleString() + ' SYP';
             $('rev-losses').textContent = rev.game_losses.toLocaleString() + ' SYP';
             $('rev-wins').textContent = rev.game_wins.toLocaleString() + ' SYP';
             $('rev-energy').textContent = rev.energy_sales.toLocaleString() + ' SYP';
