@@ -180,15 +180,16 @@ async function init() {
     let retryCount = 0;
     const attemptConnection = async () => {
         try {
-            // Show diagnostic box earlier (after 2 fails) to give user control
-            if (retryCount >= 2 && diagBox) {
+            // ALWAYS show diagnostic box if manually configured or after first fail
+            const manuallySet = !!localStorage.getItem('ar_api_url');
+            if ((retryCount >= 1 || manuallySet) && diagBox) {
                 diagBox.style.display = 'block';
             }
 
             API_URL = await resolveOptimalAPI();
             console.log('📡 [NETWORK] Attempting Target:', API_URL || '(Native Proxy)');
 
-            // Atomic Wake-up call (bypasses some browser cache/check logic)
+            // Wake-up call
             fetch(`${API_URL}/api/ping`, { mode: 'no-cors' }).catch(() => { });
 
             const pingRes = await axios.get(`${API_URL}/api/ping?v=${Date.now()}`, {
@@ -197,22 +198,20 @@ async function init() {
             });
             console.log('✅ [NETWORK] Server Ready!');
 
-            NetworkMonitor.isServerChecking = false; // Unlock
+            NetworkMonitor.isServerChecking = false;
             if (overlay) overlay.style.display = 'none';
-
-            // Start Auth Logic only AFTER connection is 100% verified
             checkAutoLogin();
         } catch (err) {
             retryCount++;
             console.warn(`⚠️ [NETWORK] Attempt ${retryCount} failed.`, err.message);
 
-            // Helpful messages based on retry count
-            if (retryCount === 1) msg.textContent = 'السيرفر يغفو حالياً... جاري إيقاظه ☕';
-            if (retryCount === 3) msg.textContent = 'تأخر السيرفر قليلاً، جاري المحاولة بشكل أقوى 💪';
-            if (retryCount > 5) msg.textContent = `محاولة رقم ${retryCount}... يرجى التحقق من VPN إذا طال الانتظار.`;
+            if (msg) {
+                if (retryCount === 1) msg.textContent = 'السيرفر يغفو حالياً... جاري إيقاظه ☕';
+                else if (retryCount === 3) msg.textContent = 'تأخر السيرفر قليلاً، جاري المحاولة بشكل أقوى 💪';
+                else if (retryCount > 6) msg.textContent = `محاولة رقم ${retryCount}... يرجى التحقق من VPN أو ضبط السيرفر يدوياً.`;
+            }
 
-            if (retryCount < 10) {
-                // Faster retries early on to wake up faster
+            if (retryCount < 15) { // Increased retries
                 const delay = retryCount < 3 ? 3000 : 5000;
                 setTimeout(attemptConnection, delay);
             } else {
