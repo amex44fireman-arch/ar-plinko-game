@@ -24,23 +24,8 @@ async function resolveOptimalAPI() {
         return saved;
     }
 
-    console.log('📡 [NETWORK] Optimization Started (Auto-Mode)...');
-
-    // 2. Atomic Fetch Test (Avoids Axios overhead/config issues)
-    const atomicPing = async (url) => {
-        try {
-            const r = await fetch(url + '/api/ping', { mode: 'cors', cache: 'no-cache' });
-            if (r.ok) return true;
-        } catch (e) { }
-        return false;
-    };
-
-    // 3. Try parallel probes
-    try {
-        if (await atomicPing('')) return '';
-        if (await atomicPing(PRODUCTION_API_URL)) return PRODUCTION_API_URL;
-    } catch (e) { }
-
+    // 2. Fixed Mode: No auto-probing, strictly use the Render URL
+    console.log('📡 [NETWORK] Using Fixed Production API:', PRODUCTION_API_URL);
     return PRODUCTION_API_URL;
 }
 
