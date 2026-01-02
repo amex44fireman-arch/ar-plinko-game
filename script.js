@@ -148,17 +148,8 @@ async function init() {
         return;
     }
 
-    const overlay = $('offline-overlay');
-    const title = $('offline-title');
-    const msg = $('offline-msg');
-    const diagBox = $('diagnostic-box');
 
-    if (overlay) {
-        overlay.style.display = 'flex';
-        if (title) title.textContent = '📡 جاري الاتصال بالسيرفر...';
-        if (msg) msg.textContent = 'نظام الحماية عالي؛ قد يستغرق الاتصال الأول 30-50 ثانية.';
-        if (diagBox) diagBox.style.display = 'none';
-    }
+
 
     NetworkMonitor.isServerChecking = true; // Lock the overlay
 
